@@ -4,7 +4,6 @@ type Initial<S> = S extends undefined
   : { initialState: S };
 
 export type Options<T, S = undefined> = {
-  name?: string;
   scheduler: (call: () => void, close: () => void) => void;
   onCall: (args: HandlerArgs<S>) => Promise<T> | T;
   onError?: (args: HandlerArgs<S>) => Promise<T> | T;
@@ -12,7 +11,8 @@ export type Options<T, S = undefined> = {
 } & Initial<S>;
 
 type OptionsFunction<T, S, Context> = (
-  ctx: ContextArgs<Context>
+  ctx: ContextArgs<Context>,
+  id: symbol
 ) => Promise<Options<T, S>> | Options<T, S>;
 
 export type DeferredOptions<T, S, Context> =

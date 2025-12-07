@@ -8,9 +8,10 @@ function session<T, S = undefined, Context = {}>(
   const registry = instanceRegistry<T, S, Context>();
   return {
     async entrypoint(ctx: ContextArgs<Context>) {
-      const options = await resolveOptions(opt, ctx);
-      const parentId = Symbol(`entrypoint:${options.name ?? "unknown"}`);
-      const instanceId = Symbol(`instance:${options.name ?? "unknown"}`);
+      const parentId = Symbol(`id:entrypoint`);
+      const instanceId = Symbol(`id:instance`);
+
+      const options = await resolveOptions(opt, ctx, instanceId);
 
       const instance = registry.getOrSet(ctx, () => {
         let state = structuredClone(options.initialState as S);
@@ -20,10 +21,11 @@ function session<T, S = undefined, Context = {}>(
           try {
             if (options.onClose) options.onClose({ state });
           } catch {}
-          running = false;
           instance.parents.delete(parentId);
           if (instance.parents.size === 0) {
-            return registry.delete(ctx);
+            running = false;
+            registry.delete(ctx);
+            return true;
           }
           return false;
         }
