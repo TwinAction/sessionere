@@ -15,9 +15,12 @@ export function session<T, S = undefined, Context = {}>(
 
       async function use<T2, S2, Context2>(
         session: Session<T2, S2, Context2>,
-        ctx: ContextArgs<Context2>
+        ...restCtx: ContextArgs<Context2> extends void ? [] : [Context2]
       ) {
-        const instance = await session.entrypoint(ctx, instanceId);
+        const instance = await session.entrypoint(
+          restCtx[0] as ContextArgs<Context2>,
+          instanceId
+        );
         closeAll.add(instance.close);
         return instance.getValue;
       }

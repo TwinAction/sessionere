@@ -13,8 +13,8 @@ export type Options<T, S = undefined> = {
 } & Initial<S>;
 
 type OptionsFunction<T, S, Context> = (
-  ctx: ContextArgs<Context>,
-  use: UseFunction
+  arg: { use: Use },
+  ctx: ContextArgs<Context>
 ) => Promise<Options<T, S>> | Options<T, S>;
 
 export type DeferredOptions<T, S, Context> =
@@ -22,9 +22,9 @@ export type DeferredOptions<T, S, Context> =
   | Promise<Options<T, S>>
   | Options<T, S>;
 
-export type UseFunction = <T, S, Context>(
+export type Use = <T, S, Context = {}>(
   session: Session<T, S, Context>,
-  args: ContextArgs<Context>
+  ...ctx: ContextArgs<Context> extends void ? [] : [Context]
 ) => Promise<() => Promise<T>>;
 
 export type ContextArgs<Context> = keyof Context extends never ? void : Context;
