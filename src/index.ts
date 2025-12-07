@@ -9,17 +9,19 @@ function session<T, S = undefined, Context = {}>(
   return {
     async entrypoint(ctx: ContextArgs<Context>) {
       const options = await resolveOptions(opt, ctx);
-      const entrypointId = Symbol(`entrypoint:${options.name ?? "unknown"}`);
-      const instanceId = Symbol(`instance:${options.name ?? "unknown"}}`);
+      const parentId = Symbol(`entrypoint:${options.name ?? "unknown"}`);
+      const instanceId = Symbol(`instance:${options.name ?? "unknown"}`);
 
       const instance = registry.getOrSet(ctx, () => {
         let state = structuredClone(options.initialState as S);
         let running = true;
 
         function close() {
-          options.onClose?.({ state });
+          try {
+            if (options.onClose) options.onClose({ state });
+          } catch {}
           running = false;
-          instance.parents.delete(entrypointId);
+          instance.parents.delete(parentId);
           if (instance.parents.size === 0) {
             return registry.delete(ctx);
           }
@@ -28,7 +30,13 @@ function session<T, S = undefined, Context = {}>(
 
         const { getValue, call } = promiseStream(
           (async function* () {
-            while (running) yield options.onCall({ state });
+            try {
+              while (running) yield await options.onCall({ state });
+            } catch {
+              try {
+                if (options.onError) yield await options.onError({ state });
+              } catch {}
+            }
           })()
         );
 
@@ -44,7 +52,7 @@ function session<T, S = undefined, Context = {}>(
         };
       });
 
-      instance.parents.add(entrypointId);
+      instance.parents.add(parentId);
 
       return { close: instance.close, getValue: instance.getValue };
     },
@@ -59,17 +67,19 @@ const funnySession = session({
   onCall: Date.now,
 });
 
-const testSession = session(async () => {
+const testSession = session(async (ctx: number) => {
   const funny = await funnySession.entrypoint();
   return {
-    scheduler: (call) => setInterval(call, 500),
+    scheduler: (call) => setInterval(call, ctx),
     onCall: async () => console.log(await funny.getValue()),
+    onError: () => {},
+    onClose: funny.close,
   };
 });
 
-testSession.entrypoint().then((s) =>
+testSession.entrypoint(500).then((s) =>
   setTimeout(() => {
     s.close();
-    testSession.entrypoint();
+    testSession.entrypoint(500);
   }, 1200)
 );

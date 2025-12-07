@@ -7,11 +7,16 @@ export type Options<T, S = undefined> = {
   name?: string;
   scheduler: (call: () => void, close: () => void) => void;
   onCall: (args: HandlerArgs<S>) => Promise<T> | T;
+  onError?: (args: HandlerArgs<S>) => Promise<T> | T;
   onClose?: (args: HandlerArgs<S>) => void;
 } & Initial<S>;
 
+type OptionsFunction<T, S, Context> = (
+  ctx: ContextArgs<Context>
+) => Promise<Options<T, S>> | Options<T, S>;
+
 export type DeferredOptions<T, S, Context> =
-  | ((ctx: ContextArgs<Context>) => Promise<Options<T, S>> | Options<T, S>)
+  | OptionsFunction<T, S, Context>
   | Promise<Options<T, S>>
   | Options<T, S>;
 
