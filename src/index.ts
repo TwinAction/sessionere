@@ -9,48 +9,44 @@ function session<T, S = undefined, Context = {}>(
   return {
     async entrypoint(ctx: ContextArgs<Context>) {
       const options = await resolveOptions(opt, ctx);
-      const id = Symbol(`session-entrypoint:${options.name ?? "unknown"}`);
-
-      //////////////
+      const entrypointId = Symbol(`entrypoint:${options.name ?? "unknown"}`);
+      const instanceId = Symbol(`instance:${options.name ?? "unknown"}}`);
 
       const instance = registry.getOrSet(ctx, () => {
+        let state = structuredClone(options.initialState as S);
         let running = true;
 
         function close() {
+          options.onClose?.({ state });
           running = false;
-          instance.refs.delete(id);
-          if (instance.refs.size === 0) {
+          instance.parents.delete(entrypointId);
+          if (instance.parents.size === 0) {
             return registry.delete(ctx);
           }
           return false;
         }
 
-        let state = structuredClone(options.initialState as S);
         const { getValue, call } = promiseStream(
-          (async function* (): AsyncGenerator<T, void, void> {
-            while (running) yield options.handler({ state });
+          (async function* () {
+            while (running) yield options.onCall({ state });
           })()
         );
 
         options.scheduler(call, close);
 
         return {
+          id: instanceId,
           options,
-          refs: new Set(),
-          id: Symbol(`session-instance:${options.name ?? "unknown"}}`),
+          parents: new Set(),
+          children: new Set(),
           getValue,
           close,
         };
       });
 
-      instance.refs.add(id);
+      instance.parents.add(entrypointId);
 
-      //////////////
-
-      return {
-        close: instance.close,
-        value: instance.getValue,
-      };
+      return { close: instance.close, getValue: instance.getValue };
     },
   };
 }
@@ -58,17 +54,22 @@ function session<T, S = undefined, Context = {}>(
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 
-const mySession = session((ctx: number) => ({
-  name: "coolshih",
-  initialState: "",
-  scheduler: (call) => setInterval(call, 500),
-  handler: async () => ctx,
-}));
-
-const session2 = session({
-  scheduler: (call) => setInterval(call, 1750),
-  handler: () => {},
+const funnySession = session({
+  scheduler: (call) => call(),
+  onCall: Date.now,
 });
 
-const instance1 = await mySession.entrypoint(123);
-const instance2 = await session2.entrypoint();
+const testSession = session(async () => {
+  const funny = await funnySession.entrypoint();
+  return {
+    scheduler: (call) => setInterval(call, 500),
+    onCall: async () => console.log(await funny.getValue()),
+  };
+});
+
+testSession.entrypoint().then((s) =>
+  setTimeout(() => {
+    s.close();
+    testSession.entrypoint();
+  }, 1200)
+);

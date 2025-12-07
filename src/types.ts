@@ -6,7 +6,8 @@ type Initial<S> = S extends undefined
 export type Options<T, S = undefined> = {
   name?: string;
   scheduler: (call: () => void, close: () => void) => void;
-  handler: (args: HandlerArgs<S>) => Promise<T> | T;
+  onCall: (args: HandlerArgs<S>) => Promise<T> | T;
+  onClose?: (args: HandlerArgs<S>) => void;
 } & Initial<S>;
 
 export type DeferredOptions<T, S, Context> =
@@ -16,9 +17,10 @@ export type DeferredOptions<T, S, Context> =
 
 export type ContextArgs<Context> = keyof Context extends never ? void : Context;
 export type SessionInstance<T, S> = {
-  options: Options<T, S>;
-  refs: Set<symbol>;
   id: symbol;
+  options: Options<T, S>;
+  parents: Set<symbol>;
+  children: Set<symbol>;
   getValue: () => Promise<T>;
   close: () => void;
 };
