@@ -1,29 +1,41 @@
 import { instanceRegistry } from "./registry";
-import { ContextArgs, DeferredOptions } from "./types";
+import { ContextArgs, DeferredOptions, Session } from "./types";
 import { promiseStream, resolveOptions } from "./utils";
 
-function session<T, S = undefined, Context = {}>(
+export function session<T, S = undefined, Context = {}>(
   opt: DeferredOptions<T, S, Context>
 ) {
   const registry = instanceRegistry<T, S, Context>();
   return {
-    async entrypoint(ctx: ContextArgs<Context>) {
-      const parentId = Symbol(`id:entrypoint`);
+    async entrypoint(ctx: ContextArgs<Context>, parent?: symbol) {
+      const parentId = parent ?? Symbol(`id:entrypoint`);
       const instanceId = Symbol(`id:instance`);
 
-      const options = await resolveOptions(opt, ctx, instanceId);
+      const closeAll = new Set<(closerId?: symbol) => void>();
+
+      async function use<T2, S2, Context2>(
+        session: Session<T2, S2, Context2>,
+        ctx: ContextArgs<Context2>
+      ) {
+        const instance = await session.entrypoint(ctx, instanceId);
+        closeAll.add(instance.close);
+        return instance.getValue;
+      }
+
+      const options = await resolveOptions(opt, ctx, use);
 
       const instance = registry.getOrSet(ctx, () => {
-        let state = structuredClone(options.initialState as S);
+        let state = options.initialState as S;
         let running = true;
 
-        function close() {
-          try {
-            if (options.onClose) options.onClose({ state });
-          } catch {}
-          instance.parents.delete(parentId);
+        function close(closerId?: symbol) {
+          instance.parents.delete(closerId ?? parentId);
           if (instance.parents.size === 0) {
+            try {
+              if (options.onClose) options.onClose({ state });
+            } catch {}
             running = false;
+            closeAll.forEach((c) => c(instanceId));
             registry.delete(ctx);
             return true;
           }
@@ -48,7 +60,6 @@ function session<T, S = undefined, Context = {}>(
           id: instanceId,
           options,
           parents: new Set(),
-          children: new Set(),
           getValue,
           close,
         };
@@ -56,32 +67,11 @@ function session<T, S = undefined, Context = {}>(
 
       instance.parents.add(parentId);
 
-      return { close: instance.close, getValue: instance.getValue };
+      return {
+        id: instance.id,
+        close: instance.close,
+        getValue: instance.getValue,
+      };
     },
   };
 }
-
-////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////
-
-const funnySession = session({
-  scheduler: (call) => call(),
-  onCall: Date.now,
-});
-
-const testSession = session(async (ctx: number) => {
-  const funny = await funnySession.entrypoint();
-  return {
-    scheduler: (call) => setInterval(call, ctx),
-    onCall: async () => console.log(await funny.getValue()),
-    onError: () => {},
-    onClose: funny.close,
-  };
-});
-
-testSession.entrypoint(500).then((s) =>
-  setTimeout(() => {
-    s.close();
-    testSession.entrypoint(500);
-  }, 1200)
-);

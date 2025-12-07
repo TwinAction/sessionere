@@ -1,3 +1,5 @@
+import { session } from ".";
+
 type HandlerArgs<S> = { state: S };
 type Initial<S> = S extends undefined
   ? { initialState?: undefined }
@@ -12,7 +14,7 @@ export type Options<T, S = undefined> = {
 
 type OptionsFunction<T, S, Context> = (
   ctx: ContextArgs<Context>,
-  id: symbol
+  use: UseFunction
 ) => Promise<Options<T, S>> | Options<T, S>;
 
 export type DeferredOptions<T, S, Context> =
@@ -20,12 +22,17 @@ export type DeferredOptions<T, S, Context> =
   | Promise<Options<T, S>>
   | Options<T, S>;
 
+export type UseFunction = <T, S, Context>(
+  session: Session<T, S, Context>,
+  args: ContextArgs<Context>
+) => Promise<() => Promise<T>>;
+
 export type ContextArgs<Context> = keyof Context extends never ? void : Context;
+export type Session<T, S, Context> = ReturnType<typeof session<T, S, Context>>;
 export type SessionInstance<T, S> = {
   id: symbol;
   options: Options<T, S>;
   parents: Set<symbol>;
-  children: Set<symbol>;
   getValue: () => Promise<T>;
-  close: () => void;
+  close: (closerId?: symbol) => void;
 };

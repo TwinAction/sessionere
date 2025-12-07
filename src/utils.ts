@@ -1,11 +1,11 @@
-import { ContextArgs, DeferredOptions, Options } from "./types";
+import { ContextArgs, DeferredOptions, Options, UseFunction } from "./types";
 
 export function resolveOptions<T, S, Context>(
   input: DeferredOptions<T, S, Context>,
   ctx: ContextArgs<Context>,
-  id: symbol
+  use: UseFunction
 ): Promise<Options<T, S>> {
-  return Promise.resolve(typeof input === "function" ? input(ctx, id) : input);
+  return Promise.resolve(typeof input === "function" ? input(ctx, use) : input);
 }
 
 export function promiseStream<T>(asyncGenerator: AsyncGenerator<T, any, any>) {
