@@ -9,10 +9,11 @@ export class SessionManager<T, S = undefined, C = {}> {
   constructor(private options: DeferredOptions<T, S, C>) {}
 
   async entrypoint(ctx: ContextArgs<C>): Promise<Session<T, S>> {
-    const parent = Symbol("session:entrypoint");
+    const entrypointId = Symbol("session:entrypoint");
+
     const options = await resolveDeferred(this.options, ctx);
     const session = this.registry.getAndSet(ctx, (session) => {
-      return Session.entry(options, parent, session);
+      return Session.entry(options, entrypointId, session);
     });
     return session;
   }
@@ -20,7 +21,6 @@ export class SessionManager<T, S = undefined, C = {}> {
 
 export class Session<T, S> {
   private parents = new Set<symbol>();
-  private children = new Set<symbol>();
   private running = true;
   private state: S;
 

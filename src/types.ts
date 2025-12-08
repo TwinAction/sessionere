@@ -1,5 +1,4 @@
 import { DeferredValue } from "./lib/deferred";
-import { Session } from "./session";
 
 export type ContextArgs<C> = keyof C extends never ? void : C;
 export type DeferredOptions<T, S, C> = DeferredValue<
