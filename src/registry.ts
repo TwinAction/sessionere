@@ -1,36 +1,50 @@
-import { ContextArgs, SessionInstance } from "./types";
-import { stableStringify } from "./stringify";
+import { stableStringify } from "./lib/stringify";
+import { Session } from "./session";
+import { ContextArgs } from "./types";
 
-export function instanceRegistry<T, S, Context>() {
-  const instances = new Map<string, SessionInstance<T, S>>();
+type AnyRegistry = SessionRegistry<any, any, any>;
 
-  return {
-    get(ctx: ContextArgs<Context>): SessionInstance<T, S> | undefined {
-      const key = stableStringify(ctx);
-      return instances.get(key);
-    },
+export class SessionRegistry<T, S, Context> {
+  private static registries = new Map<symbol, AnyRegistry>();
+  private sessions = new Map<string, Session<T, S>>();
 
-    getOrSet(
-      ctx: ContextArgs<Context>,
-      setter: () => SessionInstance<T, S>
-    ): SessionInstance<T, S> {
-      const key = stableStringify(ctx);
-      let instance = instances.get(key);
-      if (!instance) {
-        instance = setter();
-        instances.set(key, instance);
-      }
-      return instance;
-    },
+  constructor(id: symbol) {
+    SessionRegistry.registries.set(id, this);
+  }
 
-    delete(ctx: ContextArgs<Context>): boolean {
-      const key = stableStringify(ctx);
-      return instances.delete(key);
-    },
+  static access<T2, S2, Context2>(
+    id: symbol
+  ): SessionRegistry<T2, S2, Context2> | undefined {
+    return SessionRegistry.registries.get(id);
+  }
 
-    has(ctx: ContextArgs<Context>): boolean {
-      const key = stableStringify(ctx);
-      return instances.has(key);
-    },
-  };
+  get(ctx: ContextArgs<Context>): Session<T, S> | undefined {
+    return this.sessions.get(stableStringify(ctx));
+  }
+
+  getOrSet(
+    ctx: ContextArgs<Context>,
+    factory: () => Session<T, S>
+  ): Session<T, S> {
+    const key = stableStringify(ctx);
+    if (!this.sessions.has(key)) this.sessions.set(key, factory());
+    return this.sessions.get(key)!;
+  }
+
+  getAndSet(
+    ctx: ContextArgs<Context>,
+    factory: (session?: Session<T, S>) => Session<T, S>
+  ): Session<T, S> {
+    const key = stableStringify(ctx);
+    this.sessions.set(key, factory(this.sessions.get(key)));
+    return this.sessions.get(key)!;
+  }
+
+  delete(ctx: ContextArgs<Context>): boolean {
+    return this.sessions.delete(stableStringify(ctx));
+  }
+
+  has(ctx: ContextArgs<Context>): boolean {
+    return this.sessions.has(stableStringify(ctx));
+  }
 }
