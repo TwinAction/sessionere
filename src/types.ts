@@ -1,10 +1,10 @@
 import { DeferredValue } from "./lib/deferred";
 import { Session } from "./session";
 
-export type ContextArgs<Context> = keyof Context extends never ? void : Context;
-export type DeferredOptions<T, S, Context> = DeferredValue<
+export type ContextArgs<C> = keyof C extends never ? void : C;
+export type DeferredOptions<T, S, C> = DeferredValue<
   Options<T, S>,
-  [ContextArgs<Context>]
+  [ContextArgs<C>]
 >;
 
 export type Options<T, S = undefined> = {

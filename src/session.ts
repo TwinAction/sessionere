@@ -3,13 +3,12 @@ import { promiseStream } from "./lib/stream";
 import { SessionRegistry } from "./registry";
 import { ContextArgs, DeferredOptions, Options } from "./types";
 
-export class SessionManager<T, S = undefined, Context = {}> {
-  private id = Symbol("session:manager");
-  private registry = new SessionRegistry<T, S, Context>(this.id);
+export class SessionManager<T, S = undefined, C = {}> {
+  private registry = new SessionRegistry<T, S, C>();
 
-  constructor(private options: DeferredOptions<T, S, Context>) {}
+  constructor(private options: DeferredOptions<T, S, C>) {}
 
-  async entrypoint(ctx: ContextArgs<Context>): Promise<Session<T, S>> {
+  async entrypoint(ctx: ContextArgs<C>): Promise<Session<T, S>> {
     const parent = Symbol("session:entrypoint");
     const options = await resolveDeferred(this.options, ctx);
     const session = this.registry.getAndSet(ctx, (session) => {
@@ -20,7 +19,6 @@ export class SessionManager<T, S = undefined, Context = {}> {
 }
 
 export class Session<T, S> {
-  private id = Symbol("session:instance");
   private parents = new Set<symbol>();
   private children = new Set<symbol>();
   private running = true;
