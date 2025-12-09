@@ -21,9 +21,9 @@ export function promiseStream<T>(asyncGenerator: AsyncGenerator<T, any, any>) {
     })();
   }
 
-  function get() {
+  function getValue() {
     return value;
   }
 
-  return { call, get };
+  return { call, getValue };
 }
