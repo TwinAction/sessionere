@@ -26,29 +26,32 @@ const asyncStorage = new AsyncLocalStorage<{ callerId: symbol }>();
 const sessionClient = new SessionClient();
 
 export class SessionTemplate<T, S = undefined, C = {}> {
-  readonly id = Symbol("session:template");
+  private id = Symbol("session:template");
   constructor(private options: DeferredOptions<T, S, C>) {}
 
   async entry(ctx: ContextArgs<C>) {
+    const { callerId } = asyncStorage.getStore() ?? {};
     const instanceId = Symbol("session:instance");
-    const { callerId } = asyncStorage.getStore() ?? {
-      callerId: Symbol("session:entrypoint"),
-    };
+    const entryId = callerId && Symbol("session:entrypoint");
 
-    const instance = await asyncStorage.run({ callerId: instanceId }, () =>
-      sessionClient.prepareInstance<T, S>(
-        [this.id, stableStringify(ctx)],
-        async (instance) => {
-          if (instance) return instance;
-          const options = await resolveDeferred(this.options, ctx);
-          return new SessionInstance(instanceId, options);
-        }
-      )
+    const instance = await asyncStorage.run(
+      { callerId: instanceId },
+      async () =>
+        sessionClient.prepareInstance<T, S>(
+          [this.id, stableStringify(ctx)],
+          async (instance) => {
+            if (instance) return instance;
+            const options = await resolveDeferred(this.options, ctx);
+            return new SessionInstance(instanceId, options, entryId);
+          }
+        )
     );
 
-    const caller = sessionClient.instances.get(callerId);
-    if (caller) caller.children.add(instanceId);
-    instance.parents.add(callerId);
+    const caller = callerId && sessionClient.instances.get(callerId);
+    if (caller) {
+      caller.children.add(instanceId);
+      instance.parents.add(callerId);
+    }
 
     return new Session(instance);
   }
@@ -62,35 +65,39 @@ class SessionInstance<T, S> {
 
   get: () => Promise<T>;
 
-  constructor(readonly id: symbol, readonly options: Options<T, S>) {
+  constructor(
+    readonly id: symbol,
+    readonly options: Options<T, S>,
+    readonly entryId?: symbol
+  ) {
     this.state = options.initialState!;
 
     const { call, get } = promiseStream(this.createGenerator());
 
     this.get = get;
 
-    const schedulerId = Symbol("session:scheduler");
-
-    this.parents.add(schedulerId);
-    this.options.scheduler(call, () => this.close(schedulerId));
+    entryId && this.parents.add(entryId);
+    this.options.scheduler?.(call, () => this.close(entryId));
   }
 
   async *createGenerator() {
     while (this.running) {
-      yield await this.options.onCall({ state: this.state });
+      yield await this.options.onCall(this.state);
     }
   }
 
-  close(source: symbol) {
-    this.parents.delete(source);
+  close(source?: symbol) {
+    if (this.running) return true;
+    source && this.parents.delete(source);
     if (this.parents.size === 0) {
-      this.options.onClose?.({ state: this.state });
-      this.running = false;
-      sessionClient.instances.delete(this.id);
-      sessionClient.mapped.deleteByLeft(this.id);
+      this.options.onClose?.(this.state);
       this.children.forEach((id) => {
         sessionClient.instances.get(id)?.close(this.id);
       });
+      this.running = false;
+      sessionClient.instances.delete(this.id);
+      sessionClient.mapped.deleteByLeft(this.id);
+
       return true;
     }
     return false;
@@ -100,7 +107,34 @@ class SessionInstance<T, S> {
 class Session<T, S, C> {
   constructor(private instance: SessionInstance<T, S>) {}
 
-  get get() {
-    return this.instance.get();
+  async get() {
+    return await this.instance.get();
   }
 }
+
+//////////////////////////////////
+//////////////////////////////////
+// examples
+
+const greetingTemplate = new SessionTemplate({
+  scheduler: (call) => call(),
+  onCall: () => console.log("Hello World!"),
+  onClose: () => console.log("Goodbye World!"),
+});
+
+const counterTemplate = new SessionTemplate(() => {
+  greetingTemplate.entry();
+  return {
+    initialState: { count: 0 },
+    scheduler: (call, close) => {
+      const timeout = setInterval(call, 250);
+      setTimeout(() => {
+        clearInterval(timeout);
+        close();
+      }, 1000);
+    },
+    onCall: (state) => console.log(state.count++),
+  };
+});
+
+counterTemplate.entry();

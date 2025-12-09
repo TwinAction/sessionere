@@ -8,11 +8,10 @@ export type DeferredOptions<T, S, C> = DeferredValue<
 
 export type Options<T, S = undefined> = {
   scheduler: (call: () => void, close: () => void) => void;
-  onCall: (args: HandlerArgs<S>) => Promise<T> | T;
-  onClose?: (args: HandlerArgs<S>) => void;
+  onCall: (state: S) => Promise<T> | T;
+  onClose?: (state: S) => void;
 } & Initial<S>;
 
-type HandlerArgs<S> = { state: S };
 type Initial<S> = S extends undefined
   ? { initialState?: undefined }
   : { initialState: S };
