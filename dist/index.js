@@ -148,8 +148,14 @@ var Resource = class {
 		let get;
 		let close;
 		let running = true;
-		const provider = ({ handler, planner }) => {
-			const { call, getValue } = this.createStream(handler, () => running);
+		const subscribers = /* @__PURE__ */ new Set();
+		const notify = (value) => subscribers.forEach((fn) => fn(value));
+		const subscribe = (fn) => {
+			subscribers.add(fn);
+			return () => subscribers.delete(fn);
+		};
+		const provider = async ({ handler, planner }) => {
+			const { call, getValue } = this.createStream(handler, notify, () => running);
 			const cleanup = [];
 			get = getValue;
 			planner(call, (fn) => cleanup.push(fn));
@@ -159,6 +165,7 @@ var Resource = class {
 					this.instances.delete(key);
 					if (running) resolve();
 					running = false;
+					subscribers.clear();
 				};
 			});
 		};
@@ -167,17 +174,19 @@ var Resource = class {
 			refCount: 0,
 			running,
 			close,
-			get
+			get,
+			subscribe
 		};
 		this.instances.set(key, instance);
 		return instance;
 	}
-	createStream(handler, isRunning) {
+	createStream(handler, after, isRunning) {
 		return promiseStream((async function* () {
 			while (isRunning()) {
-				const t = await handler();
+				const v = await handler();
 				if (!isRunning()) return;
-				yield t;
+				yield v;
+				after(v);
 			}
 		})());
 	}
@@ -185,6 +194,9 @@ var Resource = class {
 		return {
 			get value() {
 				return instance.get();
+			},
+			subscribe(fn) {
+				return instance.subscribe(fn);
 			},
 			async [Symbol.asyncDispose]() {
 				instance.refCount--;

@@ -8,11 +8,14 @@ type Provider<T> = (args: {
   planner: PlannerCB;
 }) => Promise<void>;
 
+type Subscriber<T> = (value: T) => void;
+
 type Instance<T> = {
   refCount: number;
   running: boolean;
   close: () => void;
   get: () => Promise<T>;
+  subscribe: (fn: Subscriber<T>) => () => void;
 };
 
 export class Resource<T, C = {}> {
@@ -39,8 +42,21 @@ export class Resource<T, C = {}> {
     let close!: () => void;
     let running = true;
 
-    const provider: Provider<T> = ({ handler, planner }) => {
-      const { call, getValue } = this.createStream(handler, () => running);
+    const subscribers = new Set<Subscriber<T>>();
+
+    const notify = (value: T) => subscribers.forEach((fn) => fn(value));
+
+    const subscribe = (fn: Subscriber<T>) => {
+      subscribers.add(fn);
+      return () => subscribers.delete(fn);
+    };
+
+    const provider: Provider<T> = async ({ handler, planner }) => {
+      const { call, getValue } = this.createStream(
+        handler,
+        notify,
+        () => running
+      );
 
       const cleanup: (() => void)[] = [];
 
@@ -53,6 +69,7 @@ export class Resource<T, C = {}> {
           this.instances.delete(key);
           if (running) resolve();
           running = false;
+          subscribers.clear();
         };
       });
     };
@@ -64,6 +81,7 @@ export class Resource<T, C = {}> {
       running,
       close,
       get,
+      subscribe,
     };
 
     this.instances.set(key, instance);
@@ -72,14 +90,16 @@ export class Resource<T, C = {}> {
 
   private createStream(
     handler: () => Promise<T> | T,
+    after: (value: T) => void,
     isRunning: () => boolean
   ) {
     return promiseStream(
       (async function* () {
         while (isRunning()) {
-          const t = await handler();
+          const v = await handler();
           if (!isRunning()) return;
-          yield t;
+          yield v;
+          after(v);
         }
       })()
     );
@@ -89,6 +109,9 @@ export class Resource<T, C = {}> {
     return {
       get value() {
         return instance.get();
+      },
+      subscribe(fn: Subscriber<T>) {
+        return instance.subscribe(fn);
       },
       async [Symbol.asyncDispose]() {
         instance.refCount--;
