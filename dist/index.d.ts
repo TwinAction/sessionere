@@ -1,17 +1,17 @@
 //#region src/planner.d.ts
 type PlannerCB = (call: () => void, cleanup: (fn: () => void) => void) => void;
 declare class Planner {
-  private readonly options;
+  private readonly options?;
   private calls;
   private cleanups;
-  constructor(options: {
+  constructor(options?: {
     timeout?: number;
     interval?: number;
-  });
+  } | undefined);
   get into(): PlannerCB;
   private start;
-  private call;
   private cleanup;
+  call(): void;
 }
 //#endregion
 //#region src/resource.d.ts

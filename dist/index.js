@@ -17,21 +17,14 @@ var Planner = class {
 		};
 	}
 	start() {
-		if (this.options.timeout) {
+		if (this.options?.timeout) {
 			const timeout = setTimeout(() => this.call(), this.options.timeout);
 			this.cleanups.add(() => clearTimeout(timeout));
 		}
-		if (this.options.interval) {
+		if (this.options?.interval) {
 			const timeout = setInterval(() => this.call(), this.options.interval);
 			this.cleanups.add(() => clearInterval(timeout));
 		}
-	}
-	call() {
-		this.calls.forEach((fn) => {
-			try {
-				fn();
-			} catch {}
-		});
 	}
 	cleanup() {
 		this.cleanups.forEach((fn) => {
@@ -40,6 +33,13 @@ var Planner = class {
 			} catch {}
 		});
 		this.cleanups.clear();
+	}
+	call() {
+		this.calls.forEach((fn) => {
+			try {
+				fn();
+			} catch {}
+		});
 	}
 };
 
