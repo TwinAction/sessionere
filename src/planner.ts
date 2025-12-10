@@ -8,7 +8,7 @@ export class Planner {
   private cleanups = new Set<() => void>();
 
   constructor(
-    private readonly options: {
+    private readonly options?: {
       timeout?: number;
       interval?: number;
     }
@@ -33,11 +33,11 @@ export class Planner {
   }
 
   private start() {
-    if (this.options.timeout) {
+    if (this.options?.timeout) {
       const timeout = setTimeout(() => this.call(), this.options.timeout);
       this.cleanups.add(() => clearTimeout(timeout));
     }
-    if (this.options.interval) {
+    if (this.options?.interval) {
       const timeout = setInterval(() => this.call(), this.options.interval);
       this.cleanups.add(() => clearInterval(timeout));
     }
