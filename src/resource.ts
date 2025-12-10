@@ -25,20 +25,16 @@ export class Resource<T, C = {}> {
     ) => Promise<void> | void
   ) {}
 
-  async use(ctx: ContextArgs<C>) {
+  use(ctx: ContextArgs<C>) {
     const key = stableStringify(ctx);
-    const instance =
-      this.instances.get(key) ?? (await this.createInstance(key, ctx));
+    const instance = this.instances.get(key) ?? this.createInstance(key, ctx);
 
     instance.refCount++;
 
     return this.createHandle(instance);
   }
 
-  private async createInstance(
-    key: string,
-    ctx: ContextArgs<C>
-  ): Promise<Instance<T>> {
+  private createInstance(key: string, ctx: ContextArgs<C>): Instance<T> {
     let get!: () => Promise<T>;
     let close!: () => void;
     let running = true;
@@ -61,7 +57,7 @@ export class Resource<T, C = {}> {
       });
     };
 
-    await this.init(provider, ctx);
+    this.init(provider, ctx);
 
     const instance = {
       refCount: 0,
