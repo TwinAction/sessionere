@@ -26,44 +26,71 @@ export class Session<T, C = {}> {
 
   use(ctx: ContextArgs<C>) {
     const key = stableStringify(ctx);
-    const instance =
-      this.instances.get(key) ??
-      ((() => {
-        let get: any;
-        let close: any;
-        let running = true;
-        this.init((provider) => {
-          const { call, getValue } = promiseStream(
-            (async function* () {
-              while (running) {
-                const t = await provider.handler();
-                if (!running) return;
-                yield t;
-              }
-            })()
-          );
-          get = getValue;
-          provider.planner(call);
-          return new Promise(
-            (r) =>
-              (close = () => {
-                this.instances.delete(key);
-                running = false;
-                r();
-              })
-          );
-        }, ctx);
-        return { refCount: 0, running, close, get };
-      })() as any as Instance<T>);
+    const instance = this.instances.get(key) ?? this.createInstance(key, ctx);
+
     instance.refCount++;
+
+    return this.createHandle(instance);
+  }
+
+  private createInstance(key: string, ctx: ContextArgs<C>): Instance<T> {
+    let get!: () => Promise<T>;
+    let close!: () => void;
+    let running = true;
+
+    const provider: Provider<T> = ({ handler, planner }) => {
+      const { call, getValue } = this.createStream(handler, () => running);
+
+      get = getValue;
+      planner(call);
+
+      return new Promise<void>((resolve) => {
+        close = () => {
+          this.instances.delete(key);
+          running = false;
+          resolve();
+        };
+      });
+    };
+
+    this.init(provider, ctx);
+
+    const instance = {
+      refCount: 0,
+      running,
+      close,
+      get,
+    };
+
     this.instances.set(key, instance);
+    return instance;
+  }
+
+  private createStream(
+    handler: () => Promise<T> | T,
+    isRunning: () => boolean
+  ) {
+    return promiseStream(
+      (async function* () {
+        while (isRunning()) {
+          const t = await handler();
+          if (!isRunning()) return;
+          yield t;
+        }
+      })()
+    );
+  }
+
+  private createHandle(instance: Instance<T>) {
     return {
       get value() {
         return instance.get();
       },
       async [Symbol.asyncDispose]() {
         instance.refCount--;
-        if (instance.refCount === 0) instance.close();
+        if (instance.refCount === 0) {
+          instance.close();
+        }
       },
     };
   }
