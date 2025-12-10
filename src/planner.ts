@@ -43,14 +43,6 @@ export class Planner {
     }
   }
 
-  private call() {
-    this.calls.forEach((fn) => {
-      try {
-        fn();
-      } catch {}
-    });
-  }
-
   private cleanup() {
     this.cleanups.forEach((fn) => {
       try {
@@ -58,5 +50,13 @@ export class Planner {
       } catch {}
     });
     this.cleanups.clear();
+  }
+
+  call() {
+    this.calls.forEach((fn) => {
+      try {
+        fn();
+      } catch {}
+    });
   }
 }
