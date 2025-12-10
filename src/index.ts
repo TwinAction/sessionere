@@ -47,8 +47,8 @@ export class Session<T, C = {}> {
       return new Promise<void>((resolve) => {
         close = () => {
           this.instances.delete(key);
+          if (running) resolve();
           running = false;
-          resolve();
         };
       });
     };
