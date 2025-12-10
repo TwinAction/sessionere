@@ -138,13 +138,13 @@ var Resource = class {
 	constructor(init) {
 		this.init = init;
 	}
-	async use(ctx) {
+	use(ctx) {
 		const key = stableStringify(ctx);
-		const instance = this.instances.get(key) ?? await this.createInstance(key, ctx);
+		const instance = this.instances.get(key) ?? this.createInstance(key, ctx);
 		instance.refCount++;
 		return this.createHandle(instance);
 	}
-	async createInstance(key, ctx) {
+	createInstance(key, ctx) {
 		let get;
 		let close;
 		let running = true;
@@ -162,7 +162,7 @@ var Resource = class {
 				};
 			});
 		};
-		await this.init(provider, ctx);
+		this.init(provider, ctx);
 		const instance = {
 			refCount: 0,
 			running,

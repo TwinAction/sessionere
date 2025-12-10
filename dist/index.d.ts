@@ -24,10 +24,10 @@ declare class Resource<T, C = {}> {
   private init;
   private instances;
   constructor(init: (provider: Provider<T>, args: ContextArgs<C>) => Promise<void> | void);
-  use(ctx: ContextArgs<C>): Promise<{
+  use(ctx: ContextArgs<C>): {
     readonly value: Promise<T>;
     [Symbol.asyncDispose](): Promise<void>;
-  }>;
+  };
   private createInstance;
   private createStream;
   private createHandle;
