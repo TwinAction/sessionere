@@ -4,7 +4,7 @@ import { promiseStream } from "./lib/stream";
 type ContextArgs<C> = keyof C extends never ? void : C;
 type Provider<T> = (args: {
   handler: () => Promise<T> | T;
-  planner: (call: () => void) => void;
+  planner: (call: () => void, cleanup: (fn: () => void) => void) => void;
 }) => Promise<void>;
 
 type Instance<T> = {
@@ -14,7 +14,7 @@ type Instance<T> = {
   get: () => Promise<T>;
 };
 
-export class Session<T, C = {}> {
+export class Resource<T, C = {}> {
   private instances = new Map<string, Instance<T>>();
 
   constructor(
@@ -41,11 +41,14 @@ export class Session<T, C = {}> {
     const provider: Provider<T> = ({ handler, planner }) => {
       const { call, getValue } = this.createStream(handler, () => running);
 
+      const cleanup: (() => void)[] = [];
+
       get = getValue;
-      planner(call);
+      planner(call, (fn) => cleanup.push(fn));
 
       return new Promise<void>((resolve) => {
         close = () => {
+          cleanup.forEach((fn) => fn());
           this.instances.delete(key);
           if (running) resolve();
           running = false;
