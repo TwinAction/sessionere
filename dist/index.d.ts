@@ -25,12 +25,12 @@ declare class Resource<T, C = {}> {
   private init;
   private instances;
   constructor(init: (provider: Provider<T>, args: ContextArgs<C>) => Promise<void> | void);
-  use(ctx: ContextArgs<C>): Promise<{
+  use(ctx: ContextArgs<C>): {
     readonly value: Promise<T>;
     subscribe(fn: Subscriber<T>): () => boolean;
-    reuse(ctx: ContextArgs<C>): Promise<void>;
+    reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
-  }>;
+  };
   private prepareInstance;
   private createStream;
   private createRef;

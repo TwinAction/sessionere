@@ -138,10 +138,9 @@ var Resource = class {
 	constructor(init) {
 		this.init = init;
 	}
-	async use(ctx) {
+	use(ctx) {
 		const key = stableStringify(ctx);
 		const instance = this.prepareInstance(key, ctx);
-		await instance.ready;
 		return this.createRef({ instance });
 	}
 	prepareInstance(key, ctx) {
@@ -214,8 +213,8 @@ var Resource = class {
 				subs.add(fn);
 				return () => subs.delete(fn);
 			},
-			async reuse(ctx) {
-				await changeInstance(ctx);
+			reuse(ctx) {
+				changeInstance(ctx);
 			},
 			[Symbol.dispose]() {
 				instance.refs.delete(ref);
