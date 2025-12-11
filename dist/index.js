@@ -138,9 +138,10 @@ var Resource = class {
 	constructor(init) {
 		this.init = init;
 	}
-	use(ctx) {
+	async use(ctx) {
 		const key = stableStringify(ctx);
 		const instance = this.prepareInstance(key, ctx);
+		await instance.ready;
 		return this.createRef({ instance });
 	}
 	prepareInstance(key, ctx) {
@@ -148,8 +149,13 @@ var Resource = class {
 		let get;
 		let close;
 		let running = true;
+		let readyResolve;
+		const ready = new Promise((resolve) => {
+			readyResolve = resolve;
+		});
 		const refs = /* @__PURE__ */ new Map();
 		const provider = async ({ handler, planner }) => {
+			readyResolve();
 			const { call, getValue } = this.createStream(handler, (v) => refs.forEach((ref) => ref.notify(v)), () => running);
 			const cleanup = [];
 			get = getValue;
@@ -168,7 +174,8 @@ var Resource = class {
 			refs,
 			running,
 			close,
-			get
+			get,
+			ready
 		};
 		this.instances.set(key, instance);
 		return instance;
@@ -191,9 +198,10 @@ var Resource = class {
 			subs.forEach((fn) => fn(v));
 		} };
 		instance.refs.set(ref, refEntry);
-		const switchInstance = (ctx) => {
+		const changeInstance = async (ctx) => {
 			const key = stableStringify(ctx);
 			const newInstance = this.prepareInstance(key, ctx);
+			await newInstance.ready;
 			instance.refs.delete(ref);
 			newInstance.refs.set(ref, refEntry);
 			instance = newInstance;
@@ -206,8 +214,8 @@ var Resource = class {
 				subs.add(fn);
 				return () => subs.delete(fn);
 			},
-			switch(ctx) {
-				switchInstance(ctx);
+			async reuse(ctx) {
+				await changeInstance(ctx);
 			},
 			[Symbol.dispose]() {
 				instance.refs.delete(ref);
