@@ -15,6 +15,7 @@ type Instance<T> = {
   running: boolean;
   close: () => void;
   get: () => Promise<T>;
+  ready: Promise<void>;
 };
 
 export class Resource<T, C = {}> {
@@ -27,11 +28,10 @@ export class Resource<T, C = {}> {
     ) => Promise<void> | void
   ) {}
 
-  use(ctx: ContextArgs<C>) {
+  async use(ctx: ContextArgs<C>) {
     const key = stableStringify(ctx);
-
     const instance = this.prepareInstance(key, ctx);
-
+    await instance.ready;
     return this.createRef({ instance });
   }
 
@@ -42,9 +42,16 @@ export class Resource<T, C = {}> {
     let close!: () => void;
     let running = true;
 
+    let readyResolve!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      readyResolve = resolve;
+    });
+
     const refs = new Map<symbol, { notify: Subscriber<T> }>();
 
     const provider: Provider<T> = async ({ handler, planner }) => {
+      readyResolve();
+
       const { call, getValue } = this.createStream(
         handler,
         (v) => refs.forEach((ref) => ref.notify(v)),
@@ -73,6 +80,7 @@ export class Resource<T, C = {}> {
       running,
       close,
       get,
+      ready,
     };
 
     this.instances.set(key, instance);
@@ -110,9 +118,10 @@ export class Resource<T, C = {}> {
 
     instance.refs.set(ref, refEntry);
 
-    const switchInstance = (ctx: ContextArgs<C>) => {
+    const changeInstance = async (ctx: ContextArgs<C>) => {
       const key = stableStringify(ctx);
       const newInstance = this.prepareInstance(key, ctx);
+      await newInstance.ready;
       instance.refs.delete(ref);
       newInstance.refs.set(ref, refEntry);
       instance = newInstance;
@@ -128,8 +137,8 @@ export class Resource<T, C = {}> {
         return () => subs.delete(fn);
       },
 
-      switch(ctx: ContextArgs<C>) {
-        switchInstance(ctx);
+      async reuse(ctx: ContextArgs<C>) {
+        await changeInstance(ctx);
       },
 
       [Symbol.dispose]() {
