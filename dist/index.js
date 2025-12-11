@@ -140,22 +140,17 @@ var Resource = class {
 	}
 	use(ctx) {
 		const key = stableStringify(ctx);
-		const instance = this.instances.get(key) ?? this.createInstance(key, ctx);
-		instance.refCount++;
-		return this.createHandle(instance);
+		const instance = this.prepareInstance(key, ctx);
+		return this.createRef({ instance });
 	}
-	createInstance(key, ctx) {
+	prepareInstance(key, ctx) {
+		if (this.instances.get(key)) return this.instances.get(key);
 		let get;
 		let close;
 		let running = true;
-		const subscribers = /* @__PURE__ */ new Set();
-		const notify = (value) => subscribers.forEach((fn) => fn(value));
-		const subscribe = (fn) => {
-			subscribers.add(fn);
-			return () => subscribers.delete(fn);
-		};
+		const refs = /* @__PURE__ */ new Map();
 		const provider = async ({ handler, planner }) => {
-			const { call, getValue } = this.createStream(handler, notify, () => running);
+			const { call, getValue } = this.createStream(handler, (v) => refs.forEach((ref) => ref.notify(v)), () => running);
 			const cleanup = [];
 			get = getValue;
 			planner(call, (fn) => cleanup.push(fn));
@@ -165,17 +160,15 @@ var Resource = class {
 					this.instances.delete(key);
 					if (running) resolve();
 					running = false;
-					subscribers.clear();
 				};
 			});
 		};
 		this.init(provider, ctx);
 		const instance = {
-			refCount: 0,
+			refs,
 			running,
 			close,
-			get,
-			subscribe
+			get
 		};
 		this.instances.set(key, instance);
 		return instance;
@@ -190,17 +183,35 @@ var Resource = class {
 			}
 		})());
 	}
-	createHandle(instance) {
+	createRef(args) {
+		let instance = args.instance;
+		const ref = Symbol();
+		const subs = /* @__PURE__ */ new Set();
+		const refEntry = { notify: (v) => {
+			subs.forEach((fn) => fn(v));
+		} };
+		instance.refs.set(ref, refEntry);
+		const switchInstance = (ctx) => {
+			const key = stableStringify(ctx);
+			const newInstance = this.prepareInstance(key, ctx);
+			instance.refs.delete(ref);
+			newInstance.refs.set(ref, refEntry);
+			instance = newInstance;
+		};
 		return {
 			get value() {
 				return instance.get();
 			},
 			subscribe(fn) {
-				return instance.subscribe(fn);
+				subs.add(fn);
+				return () => subs.delete(fn);
 			},
-			async [Symbol.asyncDispose]() {
-				instance.refCount--;
-				if (instance.refCount === 0) instance.close();
+			switch(ctx) {
+				switchInstance(ctx);
+			},
+			[Symbol.dispose]() {
+				instance.refs.delete(ref);
+				if (instance.refs.size === 0) instance.close();
 			}
 		};
 	}

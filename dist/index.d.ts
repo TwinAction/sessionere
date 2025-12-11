@@ -27,12 +27,13 @@ declare class Resource<T, C = {}> {
   constructor(init: (provider: Provider<T>, args: ContextArgs<C>) => Promise<void> | void);
   use(ctx: ContextArgs<C>): {
     readonly value: Promise<T>;
-    subscribe(fn: Subscriber<T>): () => void;
-    [Symbol.asyncDispose](): Promise<void>;
+    subscribe(fn: Subscriber<T>): () => boolean;
+    switch(ctx: ContextArgs<C>): void;
+    [Symbol.dispose](): void;
   };
-  private createInstance;
+  private prepareInstance;
   private createStream;
-  private createHandle;
+  private createRef;
 }
 //#endregion
 export { Planner, Resource };
