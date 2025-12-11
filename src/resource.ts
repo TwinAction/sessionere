@@ -30,12 +30,14 @@ export class Resource<T, C = {}> {
   use(ctx: ContextArgs<C>) {
     const key = stableStringify(ctx);
 
-    const instance = this.instances.get(key) ?? this.createInstance(key, ctx);
+    const instance = this.prepareInstance(key, ctx);
 
-    return this.createRef(instance);
+    return this.createRef({ instance });
   }
 
-  private createInstance(key: string, ctx: ContextArgs<C>): Instance<T> {
+  private prepareInstance(key: string, ctx: ContextArgs<C>): Instance<T> {
+    if (this.instances.get(key)) return this.instances.get(key)!;
+
     let get!: () => Promise<T>;
     let close!: () => void;
     let running = true;
@@ -94,16 +96,27 @@ export class Resource<T, C = {}> {
     );
   }
 
-  private createRef(instance: Instance<T>) {
+  private createRef(args: { instance: Instance<T> }) {
+    let instance = args.instance;
     const ref = Symbol();
 
     const subs = new Set<Subscriber<T>>();
 
-    const notify = (v: T) => {
-      subs.forEach((fn) => fn(v));
+    const refEntry = {
+      notify: (v: T) => {
+        subs.forEach((fn) => fn(v));
+      },
     };
 
-    instance.refs.set(ref, { notify });
+    instance.refs.set(ref, refEntry);
+
+    const switchInstance = (ctx: ContextArgs<C>) => {
+      const key = stableStringify(ctx);
+      const newInstance = this.prepareInstance(key, ctx);
+      instance.refs.delete(ref);
+      newInstance.refs.set(ref, refEntry);
+      instance = newInstance;
+    };
 
     return {
       get value() {
@@ -115,7 +128,11 @@ export class Resource<T, C = {}> {
         return () => subs.delete(fn);
       },
 
-      async [Symbol.asyncDispose]() {
+      switch(ctx: ContextArgs<C>) {
+        switchInstance(ctx);
+      },
+
+      [Symbol.dispose]() {
         instance.refs.delete(ref);
         if (instance.refs.size === 0) {
           instance.close();
