@@ -11,11 +11,10 @@ type Provider<T> = (args: {
 type Subscriber<T> = (value: T) => void;
 
 type Instance<T> = {
-  refCount: number;
+  refs: Map<symbol, { notify: Subscriber<T> }>;
   running: boolean;
   close: () => void;
   get: () => Promise<T>;
-  subscribe: (fn: Subscriber<T>) => () => void;
 };
 
 export class Resource<T, C = {}> {
@@ -30,11 +29,10 @@ export class Resource<T, C = {}> {
 
   use(ctx: ContextArgs<C>) {
     const key = stableStringify(ctx);
+
     const instance = this.instances.get(key) ?? this.createInstance(key, ctx);
 
-    instance.refCount++;
-
-    return this.createHandle(instance);
+    return this.createRef(instance);
   }
 
   private createInstance(key: string, ctx: ContextArgs<C>): Instance<T> {
@@ -42,19 +40,12 @@ export class Resource<T, C = {}> {
     let close!: () => void;
     let running = true;
 
-    const subscribers = new Set<Subscriber<T>>();
-
-    const notify = (value: T) => subscribers.forEach((fn) => fn(value));
-
-    const subscribe = (fn: Subscriber<T>) => {
-      subscribers.add(fn);
-      return () => subscribers.delete(fn);
-    };
+    const refs = new Map<symbol, { notify: Subscriber<T> }>();
 
     const provider: Provider<T> = async ({ handler, planner }) => {
       const { call, getValue } = this.createStream(
         handler,
-        notify,
+        (v) => refs.forEach((ref) => ref.notify(v)),
         () => running
       );
 
@@ -69,19 +60,17 @@ export class Resource<T, C = {}> {
           this.instances.delete(key);
           if (running) resolve();
           running = false;
-          subscribers.clear();
         };
       });
     };
 
     this.init(provider, ctx);
 
-    const instance = {
-      refCount: 0,
+    const instance: Instance<T> = {
+      refs,
       running,
       close,
       get,
-      subscribe,
     };
 
     this.instances.set(key, instance);
@@ -105,17 +94,30 @@ export class Resource<T, C = {}> {
     );
   }
 
-  private createHandle(instance: Instance<T>) {
+  private createRef(instance: Instance<T>) {
+    const ref = Symbol();
+
+    const subs = new Set<Subscriber<T>>();
+
+    const notify = (v: T) => {
+      subs.forEach((fn) => fn(v));
+    };
+
+    instance.refs.set(ref, { notify });
+
     return {
       get value() {
         return instance.get();
       },
+
       subscribe(fn: Subscriber<T>) {
-        return instance.subscribe(fn);
+        subs.add(fn);
+        return () => subs.delete(fn);
       },
+
       async [Symbol.asyncDispose]() {
-        instance.refCount--;
-        if (instance.refCount === 0) {
+        instance.refs.delete(ref);
+        if (instance.refs.size === 0) {
           instance.close();
         }
       },
