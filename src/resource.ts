@@ -28,10 +28,9 @@ export class Resource<T, C = {}> {
     ) => Promise<void> | void
   ) {}
 
-  async use(ctx: ContextArgs<C>) {
+  use(ctx: ContextArgs<C>) {
     const key = stableStringify(ctx);
     const instance = this.prepareInstance(key, ctx);
-    await instance.ready;
     return this.createRef({ instance });
   }
 
@@ -137,8 +136,8 @@ export class Resource<T, C = {}> {
         return () => subs.delete(fn);
       },
 
-      async reuse(ctx: ContextArgs<C>) {
-        await changeInstance(ctx);
+      reuse(ctx: ContextArgs<C>) {
+        changeInstance(ctx);
       },
 
       [Symbol.dispose]() {
