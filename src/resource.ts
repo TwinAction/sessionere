@@ -6,6 +6,7 @@ type ContextArgs<C> = keyof C extends never ? void : C;
 type Subscriber<T> = (value: T) => void;
 
 type ResourceConfig<T> = {
+  name?: string;
   equality?: (a: T, b: T) => boolean;
 };
 
@@ -42,6 +43,10 @@ export class Resource<T, C = {}> {
     ) => Promise<void> | void,
     private config?: ResourceConfig<T>
   ) {}
+
+  get name() {
+    return this.config?.name;
+  }
 
   use(ctx: ContextArgs<C>) {
     const key = stableStringify(ctx);
