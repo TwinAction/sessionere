@@ -1,10 +1,37 @@
 //#region src/lib/stringify.ts
+var ReferenceRegistry = class {
+	refCount = 0;
+	refs = /* @__PURE__ */ new WeakMap();
+	constructor(allowPredicate) {
+		this.allowPredicate = allowPredicate;
+	}
+	getId(obj) {
+		if (!this.allowPredicate(obj)) return void 0;
+		if (!this.refs.has(obj)) {
+			this.refCount++;
+			this.refs.set(obj, `__ref_${this.refCount}__`);
+		}
+		return this.refs.get(obj);
+	}
+};
+const registry = new ReferenceRegistry((obj) => typeof obj === "function" || obj instanceof Resource);
 function stableStringify(data) {
 	const seen = [];
 	function stringifyInternal(node) {
 		if (node && typeof node.toJSON === "function") node = node.toJSON();
+		if (registry && node && typeof node === "object") {
+			const refId = registry.getId(node);
+			if (refId) return JSON.stringify(refId);
+		}
+		if (typeof node === "function") {
+			if (registry) {
+				const refId = registry.getId(node);
+				if (refId) return JSON.stringify(refId);
+			}
+			return;
+		}
 		if (typeof node === "bigint") return `"${node.toString()}n"`;
-		if (node === void 0 || typeof node === "function") return;
+		if (node === void 0) return;
 		if (typeof node !== "object" || node === null) {
 			if (typeof node === "number" && !Number.isFinite(node)) return "null";
 			return JSON.stringify(node);
@@ -32,9 +59,7 @@ function stableStringify(data) {
 			return out$1 + "]";
 		}
 		if (node instanceof Set) {
-			const sortedValues = Array.from(node.values()).sort((a, b) => {
-				return String(a).localeCompare(String(b));
-			});
+			const sortedValues = Array.from(node.values()).sort((a, b) => String(a).localeCompare(String(b)));
 			let out$1 = "[";
 			for (let i = 0; i < sortedValues.length; i++) {
 				if (i > 0) out$1 += ",";
@@ -118,14 +143,14 @@ var Resource = class {
 		return this.config?.name;
 	}
 	use(ctx) {
-		const key = stableStringify(ctx);
-		const instance = this.prepareInstance(key, ctx);
+		const instance = this.prepareInstance(ctx);
 		return this.createRef({ instance });
 	}
 	empty() {
 		return this.createRef({ instance: emptyInstance });
 	}
-	prepareInstance(key, ctx) {
+	prepareInstance(ctx) {
+		const key = stableStringify(ctx);
 		if (this.instances.get(key)) return this.instances.get(key);
 		let running = true;
 		let close;
@@ -171,8 +196,7 @@ var Resource = class {
 		} };
 		instance.refs.set(ref, refEntry);
 		const changeInstance = async (ctx) => {
-			const key = stableStringify(ctx);
-			const newInstance = this.prepareInstance(key, ctx);
+			const newInstance = this.prepareInstance(ctx);
 			await newInstance.untilRetain;
 			instance.refs.delete(ref);
 			newInstance.refs.set(ref, refEntry);
