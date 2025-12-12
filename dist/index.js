@@ -197,6 +197,7 @@ var Resource = class {
 		instance.refs.set(ref, refEntry);
 		const changeInstance = async (ctx) => {
 			const newInstance = this.prepareInstance(ctx);
+			if (newInstance === instance) return;
 			await newInstance.untilRetain;
 			newInstance.refs.set(ref, refEntry);
 			instance.refs.delete(ref);
