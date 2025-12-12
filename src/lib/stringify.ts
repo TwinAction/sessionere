@@ -1,3 +1,27 @@
+import { Resource } from "../resource";
+
+class ReferenceRegistry {
+  private refCount = 0;
+  private refs = new WeakMap<object, string>();
+
+  constructor(private allowPredicate: (obj: any) => boolean) {}
+
+  getId(obj: any): string | undefined {
+    if (!this.allowPredicate(obj)) return undefined;
+
+    if (!this.refs.has(obj)) {
+      this.refCount++;
+      this.refs.set(obj, `__ref_${this.refCount}__`);
+    }
+
+    return this.refs.get(obj);
+  }
+}
+
+const registry = new ReferenceRegistry(
+  (obj) => typeof obj === "function" || obj instanceof Resource
+);
+
 export function stableStringify(data: any): string {
   const seen: any[] = [];
 
@@ -6,11 +30,26 @@ export function stableStringify(data: any): string {
       node = node.toJSON();
     }
 
+    if (registry && node && typeof node === "object") {
+      const refId = registry.getId(node);
+      if (refId) {
+        return JSON.stringify(refId);
+      }
+    }
+
+    if (typeof node === "function") {
+      if (registry) {
+        const refId = registry.getId(node);
+        if (refId) return JSON.stringify(refId);
+      }
+      return undefined;
+    }
+
     if (typeof node === "bigint") {
       return `"${node.toString()}n"`;
     }
 
-    if (node === undefined || typeof node === "function") {
+    if (node === undefined) {
       return undefined;
     }
 
@@ -51,17 +90,15 @@ export function stableStringify(data: any): string {
       for (let i = 0; i < sortedEntries.length; i++) {
         if (i > 0) out += ",";
         const [map_key, map_value] = sortedEntries[i];
-        out +=
-          `[${stringifyInternal(map_key)},` +
-          `${stringifyInternal(map_value)}]`;
+        out += `[${stringifyInternal(map_key)},${stringifyInternal(map_value)}]`;
       }
       return out + "]";
     }
 
     if (node instanceof Set) {
-      const sortedValues = Array.from(node.values()).sort((a, b) => {
-        return String(a).localeCompare(String(b));
-      });
+      const sortedValues = Array.from(node.values()).sort((a, b) =>
+        String(a).localeCompare(String(b))
+      );
       let out = "[";
       for (let i = 0; i < sortedValues.length; i++) {
         if (i > 0) out += ",";
@@ -77,9 +114,7 @@ export function stableStringify(data: any): string {
     let first = true;
     for (const key of keys) {
       const value = stringifyInternal(node[key]);
-
       if (value === undefined) continue;
-
       if (!first) out += ",";
       first = false;
       out += JSON.stringify(key) + ":" + value;
@@ -88,5 +123,6 @@ export function stableStringify(data: any): string {
     seen.splice(seenIndex, 1);
     return "{" + out + "}";
   }
+
   return stringifyInternal(data) || "null";
 }

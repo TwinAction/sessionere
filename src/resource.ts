@@ -49,8 +49,7 @@ export class Resource<T, C = {}> {
   }
 
   use(ctx: ContextArgs<C>) {
-    const key = stableStringify(ctx);
-    const instance = this.prepareInstance(key, ctx);
+    const instance = this.prepareInstance(ctx);
     return this.createRef({ instance });
   }
 
@@ -58,7 +57,8 @@ export class Resource<T, C = {}> {
     return this.createRef({ instance: emptyInstance });
   }
 
-  private prepareInstance(key: string, ctx: ContextArgs<C>): Instance<T> {
+  private prepareInstance(ctx: ContextArgs<C>): Instance<T> {
+    const key = stableStringify(ctx);
     if (this.instances.get(key)) return this.instances.get(key)!;
 
     let running = true;
@@ -115,8 +115,7 @@ export class Resource<T, C = {}> {
     instance.refs.set(ref, refEntry);
 
     const changeInstance = async (ctx: ContextArgs<C>) => {
-      const key = stableStringify(ctx);
-      const newInstance = this.prepareInstance(key, ctx);
+      const newInstance = this.prepareInstance(ctx);
       await newInstance.untilRetain;
       instance.refs.delete(ref);
       newInstance.refs.set(ref, refEntry);
