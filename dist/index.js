@@ -223,15 +223,5 @@ var Resource = class {
 };
 
 //#endregion
-//#region src/index.ts
-const test = new Resource(async ({ retain }, num$1) => {
-	console.log("H " + num$1);
-	await retain();
-	console.log("B " + num$1);
-}).use(-1);
-let num = 0;
-setInterval(() => test.reuse(num++), 2e3);
-
-//#endregion
 export { Resource };
 //# sourceMappingURL=index.js.map
