@@ -65,15 +65,24 @@ function createWaitable(options = {}) {
 	let latest;
 	let initialized = false;
 	let waiting = [];
-	async function emit(value) {
+	async function emit(input) {
 		const prev = latest;
-		if (options.shouldAccept && !options.shouldAccept(value, prev)) return;
-		latest = value;
+		let next;
+		try {
+			if (typeof input === "function") next = await input(prev);
+			else next = await input;
+		} catch {
+			return;
+		}
+		const equals = options.equality ?? (() => false);
+		if (initialized && equals(next, prev)) return;
+		if (options.shouldAccept && !options.shouldAccept(next, prev)) return;
+		latest = next;
 		initialized = true;
 		const queued = waiting;
 		waiting = [];
-		for (const resolve of queued) resolve(value);
-		if (options.afterEmit) queueMicrotask(() => options.afterEmit(value, prev));
+		for (const resolve of queued) resolve(next);
+		if (options.afterEmit) queueMicrotask(() => options.afterEmit(next, prev));
 	}
 	function get() {
 		if (initialized) return Promise.resolve(latest);
@@ -91,8 +100,9 @@ function createWaitable(options = {}) {
 //#region src/resource.ts
 var Resource = class {
 	instances = /* @__PURE__ */ new Map();
-	constructor(init) {
+	constructor(init, config) {
 		this.init = init;
+		this.config = config;
 	}
 	use(ctx) {
 		const key = stableStringify(ctx);
@@ -117,6 +127,7 @@ var Resource = class {
 		};
 		const refs = /* @__PURE__ */ new Map();
 		const { emit, get } = createWaitable({
+			equality: this.config?.equality,
 			shouldAccept: () => running,
 			afterEmit: (next) => refs.forEach((ref) => ref.notify(next))
 		});

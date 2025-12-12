@@ -1,9 +1,13 @@
 import { stableStringify } from "./lib/stringify";
-import { createWaitable } from "./lib/waitable";
+import { createWaitable, Waitable } from "./lib/waitable";
 
 type ContextArgs<C> = keyof C extends never ? void : C;
 
 type Subscriber<T> = (value: T) => void;
+
+type ResourceConfig<T> = {
+  equality?: (a: T, b: T) => boolean;
+};
 
 type Instance<T> = {
   refs: Map<symbol, { notify: Subscriber<T> }>;
@@ -20,11 +24,12 @@ export class Resource<T, C = {}> {
   constructor(
     private init: (
       arg: {
-        emit: (value: T) => void;
+        emit: Waitable<T>["emit"];
         retain: Instance<T>["retain"];
       },
       ctx: ContextArgs<C>
-    ) => Promise<void> | void
+    ) => Promise<void> | void,
+    private config?: ResourceConfig<T>
   ) {}
 
   use(ctx: ContextArgs<C>) {
@@ -55,6 +60,7 @@ export class Resource<T, C = {}> {
     const refs = new Map<symbol, { notify: Subscriber<T> }>();
 
     const { emit, get } = createWaitable<T>({
+      equality: this.config?.equality,
       shouldAccept: () => running,
       afterEmit: (next) => refs.forEach((ref) => ref.notify(next)),
     });
