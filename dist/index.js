@@ -1,49 +1,3 @@
-//#region src/planner.ts
-var Planner = class {
-	calls = /* @__PURE__ */ new Set();
-	cleanups = /* @__PURE__ */ new Set();
-	constructor(options) {
-		this.options = options;
-	}
-	get into() {
-		return (call, cleanup) => {
-			this.calls.add(call);
-			if (this.calls.size === 1) this.start();
-			const remove = () => {
-				this.calls.delete(call);
-				if (this.calls.size === 0) this.cleanup();
-			};
-			cleanup(remove);
-		};
-	}
-	start() {
-		if (this.options?.timeout) {
-			const timeout = setTimeout(() => this.call(), this.options.timeout);
-			this.cleanups.add(() => clearTimeout(timeout));
-		}
-		if (this.options?.interval) {
-			const timeout = setInterval(() => this.call(), this.options.interval);
-			this.cleanups.add(() => clearInterval(timeout));
-		}
-	}
-	cleanup() {
-		this.cleanups.forEach((fn) => {
-			try {
-				fn();
-			} catch {}
-		});
-		this.cleanups.clear();
-	}
-	call() {
-		this.calls.forEach((fn) => {
-			try {
-				fn();
-			} catch {}
-		});
-	}
-};
-
-//#endregion
 //#region src/lib/stringify.ts
 function stableStringify(data) {
 	const seen = [];
@@ -106,28 +60,33 @@ function stableStringify(data) {
 }
 
 //#endregion
-//#region src/lib/stream.ts
-function promiseStream(asyncGenerator) {
-	let resolveInitialValue;
-	let value = new Promise((resolve) => {
-		resolveInitialValue = resolve;
-	});
-	function call() {
-		(async () => {
-			const result = await asyncGenerator.next();
-			if (result.done) return;
-			if (resolveInitialValue) {
-				resolveInitialValue(result.value);
-				resolveInitialValue = void 0;
-			} else value = Promise.resolve(result.value);
-		})();
+//#region src/lib/waitable.ts
+function createWaitable(options = {}) {
+	let latest;
+	let initialized = false;
+	let waiting = [];
+	async function emit(value) {
+		const prev = latest;
+		if (options.shouldAccept && !options.shouldAccept(value, prev)) return;
+		latest = value;
+		initialized = true;
+		const queued = waiting;
+		waiting = [];
+		for (const resolve of queued) resolve(value);
+		if (options.afterEmit) {
+			await Promise.resolve();
+			options.afterEmit(value, prev);
+		}
 	}
-	function getValue() {
-		return value;
+	function get() {
+		if (initialized) return Promise.resolve(latest);
+		return new Promise((resolve) => {
+			waiting.push(resolve);
+		});
 	}
 	return {
-		call,
-		getValue
+		emit,
+		get
 	};
 }
 
@@ -145,49 +104,39 @@ var Resource = class {
 	}
 	prepareInstance(key, ctx) {
 		if (this.instances.get(key)) return this.instances.get(key);
-		let get;
-		let close;
 		let running = true;
-		let readyResolve;
-		const ready = new Promise((resolve) => {
-			readyResolve = resolve;
-		});
-		const refs = /* @__PURE__ */ new Map();
-		const provider = async ({ handler, planner }) => {
-			readyResolve();
-			const { call, getValue } = this.createStream(handler, (v) => refs.forEach((ref) => ref.notify(v)), () => running);
-			const cleanup = [];
-			get = getValue;
-			planner(call, (fn) => cleanup.push(fn));
+		let close;
+		let until;
+		const untilRetain = new Promise((resolve) => until = resolve);
+		const retain = () => {
+			until();
 			return new Promise((resolve) => {
 				close = () => {
-					cleanup.forEach((fn) => fn());
 					this.instances.delete(key);
 					if (running) resolve();
 					running = false;
 				};
 			});
 		};
-		this.init(provider, ctx);
+		const refs = /* @__PURE__ */ new Map();
+		const { emit, get } = createWaitable({
+			shouldAccept: () => running,
+			afterEmit: (next) => refs.forEach((ref) => ref.notify(next))
+		});
+		this.init({
+			emit,
+			retain
+		}, ctx);
 		const instance = {
 			refs,
 			running,
 			close,
 			get,
-			ready
+			untilRetain,
+			retain
 		};
 		this.instances.set(key, instance);
 		return instance;
-	}
-	createStream(handler, after, isRunning) {
-		return promiseStream((async function* () {
-			while (isRunning()) {
-				const v = await handler();
-				if (!isRunning()) return;
-				yield v;
-				after(v);
-			}
-		})());
 	}
 	createRef(args) {
 		let instance = args.instance;
@@ -200,7 +149,7 @@ var Resource = class {
 		const changeInstance = async (ctx) => {
 			const key = stableStringify(ctx);
 			const newInstance = this.prepareInstance(key, ctx);
-			await newInstance.ready;
+			await newInstance.untilRetain;
 			instance.refs.delete(ref);
 			newInstance.refs.set(ref, refEntry);
 			instance = newInstance;
@@ -225,5 +174,5 @@ var Resource = class {
 };
 
 //#endregion
-export { Planner, Resource };
+export { Resource };
 //# sourceMappingURL=index.js.map
