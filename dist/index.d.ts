@@ -8,6 +8,7 @@ type Waitable<T> = {
 type ContextArgs<C> = keyof C extends never ? void : C;
 type Subscriber<T> = (value: T) => void;
 type ResourceConfig<T> = {
+  name?: string;
   equality?: (a: T, b: T) => boolean;
 };
 type Instance<T> = {
@@ -28,6 +29,7 @@ declare class Resource<T, C = {}> {
     emit: Waitable<T>["emit"];
     retain: Instance<T>["retain"];
   }, ctx: ContextArgs<C>) => Promise<void> | void, config?: ResourceConfig<T> | undefined);
+  get name(): string | undefined;
   use(ctx: ContextArgs<C>): {
     readonly value: Promise<T>;
     subscribe(fn: Subscriber<T>): () => boolean;

@@ -114,6 +114,9 @@ var Resource = class {
 		this.init = init;
 		this.config = config;
 	}
+	get name() {
+		return this.config?.name;
+	}
 	use(ctx) {
 		const key = stableStringify(ctx);
 		const instance = this.prepareInstance(key, ctx);
