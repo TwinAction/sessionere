@@ -131,10 +131,10 @@ var Resource = class {
 			shouldAccept: () => running,
 			afterEmit: (next) => refs.forEach((ref) => ref.notify(next))
 		});
-		this.init({
+		Promise.resolve(this.init({
 			emit,
 			retain
-		}, ctx);
+		}, ctx)).then(until);
 		const instance = {
 			refs,
 			running,

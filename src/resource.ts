@@ -65,7 +65,7 @@ export class Resource<T, C = {}> {
       afterEmit: (next) => refs.forEach((ref) => ref.notify(next)),
     });
 
-    this.init({ emit, retain }, ctx);
+    Promise.resolve(this.init({ emit, retain }, ctx)).then(until);
 
     const instance: Instance<T> = {
       refs,
