@@ -145,7 +145,7 @@ var Resource = class {
 		const { emit, get } = createWaitable({
 			equality: this.config?.equality,
 			shouldAccept: () => running,
-			afterEmit: (next) => refs.forEach((ref) => ref.notify(next))
+			afterEmit: (next, prev) => refs.forEach((ref) => ref.notify(next, prev))
 		});
 		Promise.resolve(this.init({
 			emit,

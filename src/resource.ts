@@ -3,7 +3,7 @@ import { createWaitable, Waitable } from "./lib/waitable";
 
 type ContextArgs<C> = keyof C extends never ? void : C;
 
-type Subscriber<T> = (value: T) => void;
+type Subscriber<T> = (value: T, prev?: T) => void;
 
 type ResourceConfig<T> = {
   name?: string;
@@ -82,7 +82,7 @@ export class Resource<T, C = {}> {
     const { emit, get } = createWaitable<T>({
       equality: this.config?.equality,
       shouldAccept: () => running,
-      afterEmit: (next) => refs.forEach((ref) => ref.notify(next)),
+      afterEmit: (next, prev) => refs.forEach((ref) => ref.notify(next, prev)),
     });
 
     Promise.resolve(this.init({ emit, retain }, ctx)).then(until);

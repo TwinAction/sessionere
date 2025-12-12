@@ -6,7 +6,7 @@ type Waitable<T> = {
 //#endregion
 //#region src/resource.d.ts
 type ContextArgs<C> = keyof C extends never ? void : C;
-type Subscriber<T> = (value: T) => void;
+type Subscriber<T> = (value: T, prev?: T) => void;
 type ResourceConfig<T> = {
   name?: string;
   equality?: (a: T, b: T) => boolean;
