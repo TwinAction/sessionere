@@ -117,8 +117,9 @@ export class Resource<T, C = {}> {
     const changeInstance = async (ctx: ContextArgs<C>) => {
       const newInstance = this.prepareInstance(ctx);
       await newInstance.untilRetain;
-      instance.refs.delete(ref);
       newInstance.refs.set(ref, refEntry);
+      instance.refs.delete(ref);
+      instance.close();
       instance = newInstance;
     };
 

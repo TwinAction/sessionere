@@ -198,8 +198,9 @@ var Resource = class {
 		const changeInstance = async (ctx) => {
 			const newInstance = this.prepareInstance(ctx);
 			await newInstance.untilRetain;
-			instance.refs.delete(ref);
 			newInstance.refs.set(ref, refEntry);
+			instance.refs.delete(ref);
+			instance.close();
 			instance = newInstance;
 		};
 		return {
@@ -220,6 +221,16 @@ var Resource = class {
 		};
 	}
 };
+
+//#endregion
+//#region src/index.ts
+const test = new Resource(async ({ retain }, num$1) => {
+	console.log("H " + num$1);
+	await retain();
+	console.log("B " + num$1);
+}).use(-1);
+let num = 0;
+setInterval(() => test.reuse(num++), 2e3);
 
 //#endregion
 export { Resource };
