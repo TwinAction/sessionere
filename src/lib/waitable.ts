@@ -1,5 +1,5 @@
 type Waitable<T> = {
-  emit: (value: T) => Promise<void>;
+  emit: (value: T) => void;
   get: () => Promise<T>;
 };
 
@@ -15,7 +15,7 @@ export function createWaitable<T>(
   let initialized = false;
   let waiting: Array<(value: T) => void> = [];
 
-  async function emit(value: T): Promise<void> {
+  async function emit(value: T) {
     const prev = latest;
 
     if (options.shouldAccept && !options.shouldAccept(value, prev)) {
@@ -29,8 +29,7 @@ export function createWaitable<T>(
     for (const resolve of queued) resolve(value);
 
     if (options.afterEmit) {
-      await Promise.resolve();
-      options.afterEmit(value, prev);
+      queueMicrotask(() => options.afterEmit!(value, prev));
     }
   }
 

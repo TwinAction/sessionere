@@ -73,10 +73,7 @@ function createWaitable(options = {}) {
 		const queued = waiting;
 		waiting = [];
 		for (const resolve of queued) resolve(value);
-		if (options.afterEmit) {
-			await Promise.resolve();
-			options.afterEmit(value, prev);
-		}
+		if (options.afterEmit) queueMicrotask(() => options.afterEmit(value, prev));
 	}
 	function get() {
 		if (initialized) return Promise.resolve(latest);
