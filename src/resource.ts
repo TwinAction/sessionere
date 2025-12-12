@@ -18,6 +18,17 @@ type Instance<T> = {
   retain: () => Promise<void>;
 };
 
+const emptyInstance: Instance<any> = {
+  refs: new Map(),
+  running: false,
+  close: () => {},
+  get: async () => {
+    throw new Error("Called get on empty Resource ref");
+  },
+  untilRetain: Promise.resolve(),
+  retain: async () => {},
+};
+
 export class Resource<T, C = {}> {
   private instances = new Map<string, Instance<T>>();
 
@@ -36,6 +47,10 @@ export class Resource<T, C = {}> {
     const key = stableStringify(ctx);
     const instance = this.prepareInstance(key, ctx);
     return this.createRef({ instance });
+  }
+
+  empty() {
+    return this.createRef({ instance: emptyInstance });
   }
 
   private prepareInstance(key: string, ctx: ContextArgs<C>): Instance<T> {

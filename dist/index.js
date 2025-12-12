@@ -98,6 +98,16 @@ function createWaitable(options = {}) {
 
 //#endregion
 //#region src/resource.ts
+const emptyInstance = {
+	refs: /* @__PURE__ */ new Map(),
+	running: false,
+	close: () => {},
+	get: async () => {
+		throw new Error("Called get on empty Resource ref");
+	},
+	untilRetain: Promise.resolve(),
+	retain: async () => {}
+};
 var Resource = class {
 	instances = /* @__PURE__ */ new Map();
 	constructor(init, config) {
@@ -108,6 +118,9 @@ var Resource = class {
 		const key = stableStringify(ctx);
 		const instance = this.prepareInstance(key, ctx);
 		return this.createRef({ instance });
+	}
+	empty() {
+		return this.createRef({ instance: emptyInstance });
 	}
 	prepareInstance(key, ctx) {
 		if (this.instances.get(key)) return this.instances.get(key);

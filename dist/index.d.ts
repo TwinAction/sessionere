@@ -34,6 +34,12 @@ declare class Resource<T, C = {}> {
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
   };
+  empty(): {
+    readonly value: Promise<T>;
+    subscribe(fn: Subscriber<T>): () => boolean;
+    reuse(ctx: ContextArgs<C>): void;
+    [Symbol.dispose](): void;
+  };
   private prepareInstance;
   private createRef;
 }
