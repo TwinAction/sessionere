@@ -16,10 +16,11 @@ type Instance<T> = {
     notify: Subscriber<T>;
   }>;
   running: boolean;
-  close: () => void;
   get: () => Promise<T>;
-  untilRetain: Promise<void>;
+  close: () => void;
   retain: () => Promise<void>;
+  untilClose: Promise<void>;
+  untilRetain: Promise<void>;
 };
 declare class Resource<T, C = {}> {
   private init;

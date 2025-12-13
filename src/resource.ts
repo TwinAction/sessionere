@@ -13,21 +13,23 @@ type ResourceConfig<T> = {
 type Instance<T> = {
   refs: Map<symbol, { notify: Subscriber<T> }>;
   running: boolean;
-  close: () => void;
   get: () => Promise<T>;
-  untilRetain: Promise<void>;
+  close: () => void;
   retain: () => Promise<void>;
+  untilClose: Promise<void>;
+  untilRetain: Promise<void>;
 };
 
 const emptyInstance: Instance<any> = {
   refs: new Map(),
   running: false,
-  close: () => {},
   get: async () => {
     throw new Error("Called get on empty Resource ref");
   },
-  untilRetain: Promise.resolve(),
+  close: () => {},
   retain: async () => {},
+  untilClose: Promise.resolve(),
+  untilRetain: Promise.resolve(),
 };
 
 export class Resource<T, C = {}> {
@@ -62,19 +64,21 @@ export class Resource<T, C = {}> {
     if (this.instances.get(key)) return this.instances.get(key)!;
 
     let running = true;
-    let close!: () => void;
-    let until!: () => void;
 
-    const untilRetain = new Promise<void>((resolve) => (until = resolve));
-    const retain = () => {
-      until();
-      return new Promise<void>((resolve) => {
-        close = () => {
-          this.instances.delete(key);
-          if (running) resolve();
-          running = false;
-        };
-      });
+    let resolveClose!: () => void;
+    const untilClose = new Promise<void>((r) => (resolveClose = r));
+    const close = () => {
+      if (!running) return;
+      this.instances.delete(key);
+      running = false;
+      resolveClose();
+    };
+
+    let resolveRetain!: () => void;
+    const untilRetain = new Promise<void>((r) => (resolveRetain = r));
+    const retain = async () => {
+      resolveRetain();
+      await untilClose;
     };
 
     const refs = new Map<symbol, { notify: Subscriber<T> }>();
@@ -82,18 +86,21 @@ export class Resource<T, C = {}> {
     const { emit, get } = createWaitable<T>({
       equality: this.config?.equality,
       shouldAccept: () => running,
-      afterEmit: (next, prev) => refs.forEach((ref) => ref.notify(next, prev)),
+      afterEmit: (next, prev) => {
+        refs.forEach((ref) => ref.notify(next, prev));
+      },
     });
 
-    Promise.resolve(this.init({ emit, retain }, ctx)).then(until);
+    Promise.resolve(this.init({ emit, retain }, ctx)).then(resolveRetain);
 
     const instance: Instance<T> = {
       refs,
       running,
-      close,
       get,
-      untilRetain,
+      close,
       retain,
+      untilClose,
+      untilRetain,
     };
 
     this.instances.set(key, instance);

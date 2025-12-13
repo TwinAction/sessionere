@@ -126,12 +126,13 @@ function createWaitable(options = {}) {
 const emptyInstance = {
 	refs: /* @__PURE__ */ new Map(),
 	running: false,
-	close: () => {},
 	get: async () => {
 		throw new Error("Called get on empty Resource ref");
 	},
-	untilRetain: Promise.resolve(),
-	retain: async () => {}
+	close: () => {},
+	retain: async () => {},
+	untilClose: Promise.resolve(),
+	untilRetain: Promise.resolve()
 };
 var Resource = class {
 	instances = /* @__PURE__ */ new Map();
@@ -153,36 +154,40 @@ var Resource = class {
 		const key = stableStringify(ctx);
 		if (this.instances.get(key)) return this.instances.get(key);
 		let running = true;
-		let close;
-		let until;
-		const untilRetain = new Promise((resolve) => until = resolve);
-		const retain = () => {
-			until();
-			return new Promise((resolve) => {
-				close = () => {
-					this.instances.delete(key);
-					if (running) resolve();
-					running = false;
-				};
-			});
+		let resolveClose;
+		const untilClose = new Promise((r) => resolveClose = r);
+		const close = () => {
+			if (!running) return;
+			this.instances.delete(key);
+			running = false;
+			resolveClose();
+		};
+		let resolveRetain;
+		const untilRetain = new Promise((r) => resolveRetain = r);
+		const retain = async () => {
+			resolveRetain();
+			await untilClose;
 		};
 		const refs = /* @__PURE__ */ new Map();
 		const { emit, get } = createWaitable({
 			equality: this.config?.equality,
 			shouldAccept: () => running,
-			afterEmit: (next, prev) => refs.forEach((ref) => ref.notify(next, prev))
+			afterEmit: (next, prev) => {
+				refs.forEach((ref) => ref.notify(next, prev));
+			}
 		});
 		Promise.resolve(this.init({
 			emit,
 			retain
-		}, ctx)).then(until);
+		}, ctx)).then(resolveRetain);
 		const instance = {
 			refs,
 			running,
-			close,
 			get,
-			untilRetain,
-			retain
+			close,
+			retain,
+			untilClose,
+			untilRetain
 		};
 		this.instances.set(key, instance);
 		return instance;
