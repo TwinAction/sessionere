@@ -1,4 +1,4 @@
-import { Resource } from "../resource";
+import { createHash } from "crypto";
 
 class ReferenceRegistry {
   private refCount = 0;
@@ -18,11 +18,15 @@ class ReferenceRegistry {
   }
 }
 
-const registry = new ReferenceRegistry(
-  (obj) => typeof obj === "function" || obj instanceof Resource
-);
+const registry = new ReferenceRegistry((obj) => {
+  return (
+    typeof obj === "function" ||
+    (obj && typeof obj === "object" && obj.constructor !== Object) ||
+    typeof obj === "symbol"
+  );
+});
 
-export function stableStringify(data: any): string {
+function stableStringify(data: any): string {
   const seen: any[] = [];
 
   function stringifyInternal(node: any): string | undefined {
@@ -32,97 +36,68 @@ export function stableStringify(data: any): string {
 
     if (registry && node && typeof node === "object") {
       const refId = registry.getId(node);
-      if (refId) {
-        return JSON.stringify(refId);
-      }
+      if (refId) return JSON.stringify(refId);
     }
 
     if (typeof node === "function") {
-      if (registry) {
-        const refId = registry.getId(node);
-        if (refId) return JSON.stringify(refId);
-      }
+      const refId = registry.getId(node);
+      if (refId) return JSON.stringify(refId);
       return undefined;
     }
 
-    if (typeof node === "bigint") {
-      return `"${node.toString()}n"`;
-    }
-
-    if (node === undefined) {
-      return undefined;
-    }
+    if (typeof node === "bigint") return `"${node.toString()}n"`;
+    if (node === undefined) return undefined;
 
     if (typeof node !== "object" || node === null) {
-      if (typeof node === "number" && !Number.isFinite(node)) {
-        return "null";
-      }
+      if (typeof node === "number" && !Number.isFinite(node)) return "null";
       return JSON.stringify(node);
     }
 
     if (Array.isArray(node)) {
-      let out = "[";
-      for (let i = 0; i < node.length; i++) {
-        if (i > 0) out += ",";
-        const value = stringifyInternal(node[i]);
-        out += value === undefined ? "null" : value;
-      }
-      return out + "]";
+      const out = node.map((v) => stringifyInternal(v) ?? "null").join(",");
+      return `[${out}]`;
     }
 
-    if (seen.includes(node)) {
-      return JSON.stringify("__cycle__");
-    }
+    if (seen.includes(node)) return JSON.stringify("__cycle__");
 
-    if (node instanceof Date) {
-      return `"${node.toISOString()}"`;
-    }
-
-    if (node instanceof RegExp) {
-      return JSON.stringify(node.toString());
-    }
+    if (node instanceof Date) return `"${node.toISOString()}"`;
+    if (node instanceof RegExp) return JSON.stringify(node.toString());
 
     if (node instanceof Map) {
-      const sortedEntries = Array.from(node.entries()).sort((a, b) =>
+      const sorted = Array.from(node.entries()).sort((a, b) =>
         String(a[0]).localeCompare(String(b[0]))
       );
-      let out = "[";
-      for (let i = 0; i < sortedEntries.length; i++) {
-        if (i > 0) out += ",";
-        const [map_key, map_value] = sortedEntries[i];
-        out += `[${stringifyInternal(map_key)},${stringifyInternal(map_value)}]`;
-      }
-      return out + "]";
+      const out = sorted
+        .map(([k, v]) => `[${stringifyInternal(k)},${stringifyInternal(v)}]`)
+        .join(",");
+      return `[${out}]`;
     }
 
     if (node instanceof Set) {
-      const sortedValues = Array.from(node.values()).sort((a, b) =>
+      const sorted = Array.from(node.values()).sort((a, b) =>
         String(a).localeCompare(String(b))
       );
-      let out = "[";
-      for (let i = 0; i < sortedValues.length; i++) {
-        if (i > 0) out += ",";
-        out += stringifyInternal(sortedValues[i]);
-      }
-      return out + "]";
+      const out = sorted.map((v) => stringifyInternal(v)).join(",");
+      return `[${out}]`;
     }
 
-    const seenIndex = seen.push(node) - 1;
-
+    seen.push(node);
     const keys = Object.keys(node).sort();
-    let out = "";
-    let first = true;
+    const parts: string[] = [];
     for (const key of keys) {
-      const value = stringifyInternal(node[key]);
-      if (value === undefined) continue;
-      if (!first) out += ",";
-      first = false;
-      out += JSON.stringify(key) + ":" + value;
+      const val = stringifyInternal(node[key]);
+      if (val !== undefined) parts.push(`${JSON.stringify(key)}:${val}`);
     }
+    seen.pop();
 
-    seen.splice(seenIndex, 1);
-    return "{" + out + "}";
+    return `{${parts.join(",")}}`;
   }
 
   return stringifyInternal(data) || "null";
+}
+
+export function stableHash(data: any): string {
+  const json = stableStringify(data);
+  const hash = createHash("sha256").update(json).digest("hex");
+  return hash;
 }

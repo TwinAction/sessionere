@@ -1,4 +1,4 @@
-import { stableStringify } from "./lib/stringify";
+import { stableHash } from "./lib/stringify";
 import { createWaitable, Waitable } from "./lib/waitable";
 
 type ContextArgs<C> = keyof C extends never ? void : C;
@@ -11,6 +11,7 @@ type ResourceConfig<T> = {
 };
 
 type Instance<T> = {
+  key: string;
   refs: Map<symbol, { notify: Subscriber<T> }>;
   running: boolean;
   get: () => Promise<T>;
@@ -21,6 +22,7 @@ type Instance<T> = {
 };
 
 const emptyInstance: Instance<any> = {
+  key: "",
   refs: new Map(),
   running: false,
   get: async () => {
@@ -60,7 +62,7 @@ export class Resource<T, C = {}> {
   }
 
   private prepareInstance(ctx: ContextArgs<C>): Instance<T> {
-    const key = stableStringify(ctx);
+    const key = stableHash(ctx);
     if (this.instances.get(key)) return this.instances.get(key)!;
 
     let running = true;
@@ -94,6 +96,7 @@ export class Resource<T, C = {}> {
     Promise.resolve(this.init({ emit, retain }, ctx)).then(resolveRetain);
 
     const instance: Instance<T> = {
+      key,
       refs,
       running,
       get,
@@ -132,6 +135,10 @@ export class Resource<T, C = {}> {
     };
 
     return {
+      get key() {
+        return instance.key;
+      },
+
       get value() {
         return instance.get();
       },
