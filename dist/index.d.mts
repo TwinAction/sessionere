@@ -12,6 +12,7 @@ type ResourceConfig<T> = {
   equality?: (a: T, b: T) => boolean;
 };
 type Instance<T> = {
+  key: string;
   refs: Map<symbol, {
     notify: Subscriber$1<T>;
   }>;
@@ -32,12 +33,14 @@ declare class Resource<T, C = {}> {
   }, ctx: ContextArgs<C>) => Promise<void> | void, config?: ResourceConfig<T> | undefined);
   get name(): string | undefined;
   use(ctx: ContextArgs<C>): {
+    readonly key: string;
     readonly value: Promise<T>;
     subscribe(fn: Subscriber$1<T>): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
   };
   empty(): {
+    readonly key: string;
     readonly value: Promise<T>;
     subscribe(fn: Subscriber$1<T>): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
@@ -59,4 +62,4 @@ declare class Action<T> {
 }
 //#endregion
 export { Action, Resource };
-//# sourceMappingURL=index.d.ts.map
+//# sourceMappingURL=index.d.mts.map

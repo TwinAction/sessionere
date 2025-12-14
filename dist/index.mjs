@@ -1,3 +1,5 @@
+import { createHash } from "crypto";
+
 //#region src/lib/stringify.ts
 var ReferenceRegistry = class {
 	refCount = 0;
@@ -14,7 +16,9 @@ var ReferenceRegistry = class {
 		return this.refs.get(obj);
 	}
 };
-const registry = new ReferenceRegistry((obj) => typeof obj === "function" || obj instanceof Resource);
+const registry = new ReferenceRegistry((obj) => {
+	return typeof obj === "function" || obj && typeof obj === "object" && obj.constructor !== Object || typeof obj === "symbol";
+});
 function stableStringify(data) {
 	const seen = [];
 	function stringifyInternal(node) {
@@ -24,64 +28,37 @@ function stableStringify(data) {
 			if (refId) return JSON.stringify(refId);
 		}
 		if (typeof node === "function") {
-			if (registry) {
-				const refId = registry.getId(node);
-				if (refId) return JSON.stringify(refId);
-			}
+			const refId = registry.getId(node);
+			if (refId) return JSON.stringify(refId);
 			return;
 		}
 		if (typeof node === "bigint") return `"${node.toString()}n"`;
-		if (node === void 0) return;
+		if (node === void 0) return void 0;
 		if (typeof node !== "object" || node === null) {
 			if (typeof node === "number" && !Number.isFinite(node)) return "null";
 			return JSON.stringify(node);
 		}
-		if (Array.isArray(node)) {
-			let out$1 = "[";
-			for (let i = 0; i < node.length; i++) {
-				if (i > 0) out$1 += ",";
-				const value = stringifyInternal(node[i]);
-				out$1 += value === void 0 ? "null" : value;
-			}
-			return out$1 + "]";
-		}
+		if (Array.isArray(node)) return `[${node.map((v) => stringifyInternal(v) ?? "null").join(",")}]`;
 		if (seen.includes(node)) return JSON.stringify("__cycle__");
 		if (node instanceof Date) return `"${node.toISOString()}"`;
 		if (node instanceof RegExp) return JSON.stringify(node.toString());
-		if (node instanceof Map) {
-			const sortedEntries = Array.from(node.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-			let out$1 = "[";
-			for (let i = 0; i < sortedEntries.length; i++) {
-				if (i > 0) out$1 += ",";
-				const [map_key, map_value] = sortedEntries[i];
-				out$1 += `[${stringifyInternal(map_key)},${stringifyInternal(map_value)}]`;
-			}
-			return out$1 + "]";
-		}
-		if (node instanceof Set) {
-			const sortedValues = Array.from(node.values()).sort((a, b) => String(a).localeCompare(String(b)));
-			let out$1 = "[";
-			for (let i = 0; i < sortedValues.length; i++) {
-				if (i > 0) out$1 += ",";
-				out$1 += stringifyInternal(sortedValues[i]);
-			}
-			return out$1 + "]";
-		}
-		const seenIndex = seen.push(node) - 1;
+		if (node instanceof Map) return `[${Array.from(node.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([k, v]) => `[${stringifyInternal(k)},${stringifyInternal(v)}]`).join(",")}]`;
+		if (node instanceof Set) return `[${Array.from(node.values()).sort((a, b) => String(a).localeCompare(String(b))).map((v) => stringifyInternal(v)).join(",")}]`;
+		seen.push(node);
 		const keys = Object.keys(node).sort();
-		let out = "";
-		let first = true;
+		const parts = [];
 		for (const key of keys) {
-			const value = stringifyInternal(node[key]);
-			if (value === void 0) continue;
-			if (!first) out += ",";
-			first = false;
-			out += JSON.stringify(key) + ":" + value;
+			const val = stringifyInternal(node[key]);
+			if (val !== void 0) parts.push(`${JSON.stringify(key)}:${val}`);
 		}
-		seen.splice(seenIndex, 1);
-		return "{" + out + "}";
+		seen.pop();
+		return `{${parts.join(",")}}`;
 	}
 	return stringifyInternal(data) || "null";
+}
+function stableHash(data) {
+	const json = stableStringify(data);
+	return createHash("sha256").update(json).digest("hex");
 }
 
 //#endregion
@@ -124,6 +101,7 @@ function createWaitable(options = {}) {
 //#endregion
 //#region src/resource.ts
 const emptyInstance = {
+	key: "",
 	refs: /* @__PURE__ */ new Map(),
 	running: false,
 	get: async () => {
@@ -151,7 +129,7 @@ var Resource = class {
 		return this.createRef({ instance: emptyInstance });
 	}
 	prepareInstance(ctx) {
-		const key = stableStringify(ctx);
+		const key = stableHash(ctx);
 		if (this.instances.get(key)) return this.instances.get(key);
 		let running = true;
 		let resolveClose;
@@ -181,6 +159,7 @@ var Resource = class {
 			retain
 		}, ctx)).then(resolveRetain);
 		const instance = {
+			key,
 			refs,
 			running,
 			get,
@@ -210,6 +189,9 @@ var Resource = class {
 			instance = newInstance;
 		};
 		return {
+			get key() {
+				return instance.key;
+			},
 			get value() {
 				return instance.get();
 			},
@@ -254,4 +236,4 @@ var Action = class {
 
 //#endregion
 export { Action, Resource };
-//# sourceMappingURL=index.js.map
+//# sourceMappingURL=index.mjs.map
