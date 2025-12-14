@@ -6,14 +6,14 @@ type Waitable<T> = {
 //#endregion
 //#region src/resource.d.ts
 type ContextArgs<C> = keyof C extends never ? void : C;
-type Subscriber<T> = (value: T, prev?: T) => void;
+type Subscriber$1<T> = (value: T, prev?: T) => void;
 type ResourceConfig<T> = {
   name?: string;
   equality?: (a: T, b: T) => boolean;
 };
 type Instance<T> = {
   refs: Map<symbol, {
-    notify: Subscriber<T>;
+    notify: Subscriber$1<T>;
   }>;
   running: boolean;
   get: () => Promise<T>;
@@ -33,13 +33,13 @@ declare class Resource<T, C = {}> {
   get name(): string | undefined;
   use(ctx: ContextArgs<C>): {
     readonly value: Promise<T>;
-    subscribe(fn: Subscriber<T>): () => boolean;
+    subscribe(fn: Subscriber$1<T>): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
   };
   empty(): {
     readonly value: Promise<T>;
-    subscribe(fn: Subscriber<T>): () => boolean;
+    subscribe(fn: Subscriber$1<T>): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
   };
@@ -47,5 +47,16 @@ declare class Resource<T, C = {}> {
   private createRef;
 }
 //#endregion
-export { Resource };
+//#region src/action.d.ts
+type Subscriber<T> = (value: T) => void;
+declare class Action<T> {
+  private refs;
+  emit(value: T): void;
+  sub(fn: Subscriber<T>): {
+    unsub(): void;
+    [Symbol.dispose]: () => void;
+  };
+}
+//#endregion
+export { Action, Resource };
 //# sourceMappingURL=index.d.ts.map

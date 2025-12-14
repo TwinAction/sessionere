@@ -229,5 +229,26 @@ var Resource = class {
 };
 
 //#endregion
-export { Resource };
+//#region src/action.ts
+var Action = class {
+	refs = /* @__PURE__ */ new Map();
+	emit(value) {
+		for (const { notify } of this.refs.values()) notify(value);
+	}
+	sub(fn) {
+		const id = Symbol();
+		this.refs.set(id, { notify: fn });
+		return {
+			unsub() {
+				this[Symbol.dispose]();
+			},
+			[Symbol.dispose]: () => {
+				this.refs.delete(id);
+			}
+		};
+	}
+};
+
+//#endregion
+export { Action, Resource };
 //# sourceMappingURL=index.js.map
