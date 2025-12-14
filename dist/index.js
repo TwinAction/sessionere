@@ -235,12 +235,15 @@ var Action = class {
 	emit(value) {
 		for (const { notify } of this.refs.values()) notify(value);
 	}
-	sub(fn) {
+	use() {
 		const id = Symbol();
-		this.refs.set(id, { notify: fn });
+		const subs = /* @__PURE__ */ new Set();
+		this.refs.set(id, { notify: (v) => {
+			subs.forEach((fn) => fn(v));
+		} });
 		return {
-			unsub() {
-				this[Symbol.dispose]();
+			subscribe(fn) {
+				subs.add(fn);
 			},
 			[Symbol.dispose]: () => {
 				this.refs.delete(id);

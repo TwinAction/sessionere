@@ -52,8 +52,8 @@ type Subscriber<T> = (value: T) => void;
 declare class Action<T> {
   private refs;
   emit(value: T): void;
-  sub(fn: Subscriber<T>): {
-    unsub(): void;
+  use(): {
+    subscribe(fn: Subscriber<T>): void;
     [Symbol.dispose]: () => void;
   };
 }

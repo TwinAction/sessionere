@@ -9,17 +9,23 @@ export class Action<T> {
     }
   }
 
-  sub(fn: Subscriber<T>) {
+  use() {
     const id = Symbol();
+    const subs = new Set<Subscriber<T>>();
 
-    this.refs.set(id, {
-      notify: fn,
-    });
+    const entry = {
+      notify: (v: T) => {
+        subs.forEach((fn) => fn(v));
+      },
+    };
+
+    this.refs.set(id, entry);
 
     return {
-      unsub() {
-        this[Symbol.dispose]();
+      subscribe(fn: Subscriber<T>) {
+        subs.add(fn);
       },
+
       [Symbol.dispose]: () => {
         this.refs.delete(id);
       },
