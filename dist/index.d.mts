@@ -6,8 +6,8 @@ type Waitable<T> = {
 //#endregion
 //#region src/resource.d.ts
 type RefLike<T> = {
-  key: string;
-  value: Promise<T>;
+  readonly key: string;
+  readonly value: Promise<T>;
   subscribe: (fn: Subscriber$1<T>) => () => boolean;
 };
 type ContextArgs<C> = keyof C extends never ? void : C;

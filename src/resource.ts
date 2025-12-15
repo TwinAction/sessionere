@@ -2,8 +2,8 @@ import { stableHash } from "./lib/stringify";
 import { createWaitable, Waitable } from "./lib/waitable";
 
 export type RefLike<T> = {
-  key: string;
-  value: Promise<T>;
+  readonly key: string;
+  readonly value: Promise<T>;
   subscribe: (fn: Subscriber<T>) => () => boolean;
 };
 
