@@ -5,6 +5,11 @@ type Waitable<T> = {
 };
 //#endregion
 //#region src/resource.d.ts
+type RefLike<T> = {
+  key: string;
+  value: Promise<T>;
+  subscribe: (fn: Subscriber$1<T>) => () => boolean;
+};
 type ContextArgs<C> = keyof C extends never ? void : C;
 type Subscriber$1<T> = (value: T, prev?: T) => void;
 type ResourceConfig<T> = {
@@ -61,5 +66,5 @@ declare class Action<T> {
   };
 }
 //#endregion
-export { Action, Resource };
+export { Action, type RefLike, Resource };
 //# sourceMappingURL=index.d.mts.map
