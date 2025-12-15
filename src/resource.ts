@@ -1,6 +1,12 @@
 import { stableHash } from "./lib/stringify";
 import { createWaitable, Waitable } from "./lib/waitable";
 
+export type RefLike<T> = {
+  key: string;
+  value: Promise<T>;
+  subscribe: (fn: Subscriber<T>) => () => boolean;
+};
+
 type ContextArgs<C> = keyof C extends never ? void : C;
 
 type Subscriber<T> = (value: T, prev?: T) => void;
