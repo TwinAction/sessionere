@@ -156,7 +156,8 @@ var Resource = class {
 		});
 		Promise.resolve(this.init({
 			emit,
-			retain
+			retain,
+			key
 		}, ctx)).then(resolveRetain);
 		const instance = {
 			key,

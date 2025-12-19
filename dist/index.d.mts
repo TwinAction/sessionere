@@ -35,6 +35,7 @@ declare class Resource<T, C = {}> {
   constructor(init: (arg: {
     emit: Waitable<T>["emit"];
     retain: Instance<T>["retain"];
+    key: string;
   }, ctx: ContextArgs<C>) => Promise<void> | void, config?: ResourceConfig<T> | undefined);
   get name(): string | undefined;
   use(ctx: ContextArgs<C>): {
