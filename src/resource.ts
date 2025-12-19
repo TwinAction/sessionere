@@ -48,6 +48,7 @@ export class Resource<T, C = {}> {
       arg: {
         emit: Waitable<T>["emit"];
         retain: Instance<T>["retain"];
+        key: string;
       },
       ctx: ContextArgs<C>
     ) => Promise<void> | void,
@@ -99,7 +100,7 @@ export class Resource<T, C = {}> {
       },
     });
 
-    Promise.resolve(this.init({ emit, retain }, ctx)).then(resolveRetain);
+    Promise.resolve(this.init({ emit, retain, key }, ctx)).then(resolveRetain);
 
     const instance: Instance<T> = {
       key,
