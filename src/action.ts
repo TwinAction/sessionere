@@ -2,9 +2,15 @@ type Subscriber<T> = (value: T) => void;
 
 export class Action<T> {
   private refs = new Map<symbol, { notify: Subscriber<T> }>();
+  private value?: T;
+
+  get latestValue() {
+    return this.value;
+  }
 
   emit(value: T) {
     for (const { notify } of this.refs.values()) {
+      this.value = value;
       notify(value);
     }
   }

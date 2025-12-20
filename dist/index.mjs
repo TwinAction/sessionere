@@ -215,8 +215,15 @@ var Resource = class {
 //#region src/action.ts
 var Action = class {
 	refs = /* @__PURE__ */ new Map();
+	value;
+	get latestValue() {
+		return this.value;
+	}
 	emit(value) {
-		for (const { notify } of this.refs.values()) notify(value);
+		for (const { notify } of this.refs.values()) {
+			this.value = value;
+			notify(value);
+		}
 	}
 	use() {
 		const id = Symbol();

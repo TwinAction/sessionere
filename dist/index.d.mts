@@ -60,6 +60,8 @@ declare class Resource<T, C = {}> {
 type Subscriber<T> = (value: T) => void;
 declare class Action<T> {
   private refs;
+  private value?;
+  get latestValue(): T | undefined;
   emit(value: T): void;
   use(): {
     subscribe(fn: Subscriber<T>): void;
