@@ -110,7 +110,8 @@ const emptyInstance = {
 	close: () => {},
 	retain: async () => {},
 	untilClose: Promise.resolve(),
-	untilRetain: Promise.resolve()
+	untilRetain: Promise.resolve(),
+	untilFinish: Promise.resolve()
 };
 var Resource = class {
 	instances = /* @__PURE__ */ new Map();
@@ -146,6 +147,8 @@ var Resource = class {
 			resolveRetain();
 			await untilClose;
 		};
+		let resolveFinish;
+		const untilFinish = new Promise((r) => resolveFinish = r);
 		const refs = /* @__PURE__ */ new Map();
 		const { emit, get } = createWaitable({
 			equality: this.config?.equality,
@@ -158,7 +161,10 @@ var Resource = class {
 			emit,
 			retain,
 			key
-		}, ctx)).then(resolveRetain);
+		}, ctx)).then(() => {
+			resolveRetain();
+			resolveFinish();
+		});
 		const instance = {
 			key,
 			refs,
@@ -167,7 +173,8 @@ var Resource = class {
 			close,
 			retain,
 			untilClose,
-			untilRetain
+			untilRetain,
+			untilFinish
 		};
 		this.instances.set(key, instance);
 		return instance;
@@ -206,6 +213,13 @@ var Resource = class {
 			[Symbol.dispose]() {
 				instance.refs.delete(ref);
 				if (instance.refs.size === 0) instance.close();
+			},
+			async [Symbol.asyncDispose]() {
+				instance.refs.delete(ref);
+				if (instance.refs.size === 0) {
+					instance.close();
+					await instance.untilFinish;
+				}
 			}
 		};
 	}

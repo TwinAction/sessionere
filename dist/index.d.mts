@@ -27,6 +27,7 @@ type Instance<T> = {
   retain: () => Promise<void>;
   untilClose: Promise<void>;
   untilRetain: Promise<void>;
+  untilFinish: Promise<void>;
 };
 declare class Resource<T, C = {}> {
   private init;
@@ -44,6 +45,7 @@ declare class Resource<T, C = {}> {
     subscribe(fn: Subscriber$1<T>): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
+    [Symbol.asyncDispose](): Promise<void>;
   };
   empty(): {
     readonly key: string;
@@ -51,6 +53,7 @@ declare class Resource<T, C = {}> {
     subscribe(fn: Subscriber$1<T>): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
+    [Symbol.asyncDispose](): Promise<void>;
   };
   private prepareInstance;
   private createRef;

@@ -25,6 +25,7 @@ type Instance<T> = {
   retain: () => Promise<void>;
   untilClose: Promise<void>;
   untilRetain: Promise<void>;
+  untilFinish: Promise<void>;
 };
 
 const emptyInstance: Instance<any> = {
@@ -38,6 +39,7 @@ const emptyInstance: Instance<any> = {
   retain: async () => {},
   untilClose: Promise.resolve(),
   untilRetain: Promise.resolve(),
+  untilFinish: Promise.resolve(),
 };
 
 export class Resource<T, C = {}> {
@@ -76,6 +78,7 @@ export class Resource<T, C = {}> {
 
     let resolveClose!: () => void;
     const untilClose = new Promise<void>((r) => (resolveClose = r));
+
     const close = () => {
       if (!running) return;
       this.instances.delete(key);
@@ -90,6 +93,9 @@ export class Resource<T, C = {}> {
       await untilClose;
     };
 
+    let resolveFinish!: () => void;
+    const untilFinish = new Promise<void>((r) => (resolveFinish = r));
+
     const refs = new Map<symbol, { notify: Subscriber<T> }>();
 
     const { emit, get } = createWaitable<T>({
@@ -100,7 +106,10 @@ export class Resource<T, C = {}> {
       },
     });
 
-    Promise.resolve(this.init({ emit, retain, key }, ctx)).then(resolveRetain);
+    Promise.resolve(this.init({ emit, retain, key }, ctx)).then(() => {
+      resolveRetain();
+      resolveFinish();
+    });
 
     const instance: Instance<T> = {
       key,
@@ -111,6 +120,7 @@ export class Resource<T, C = {}> {
       retain,
       untilClose,
       untilRetain,
+      untilFinish,
     };
 
     this.instances.set(key, instance);
@@ -163,6 +173,15 @@ export class Resource<T, C = {}> {
         instance.refs.delete(ref);
         if (instance.refs.size === 0) {
           instance.close();
+        }
+      },
+
+      async [Symbol.asyncDispose]() {
+        instance.refs.delete(ref);
+
+        if (instance.refs.size === 0) {
+          instance.close();
+          await instance.untilFinish;
         }
       },
     };
