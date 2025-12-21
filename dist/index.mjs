@@ -130,7 +130,7 @@ var Resource = class {
 		return this.createRef({ instance: emptyInstance });
 	}
 	prepareInstance(ctx) {
-		const key = stableHash(ctx);
+		const key = `${this.config?.name ?? "unknown"}:${stableHash(ctx)}`;
 		if (this.instances.get(key)) return this.instances.get(key);
 		let running = true;
 		let resolveClose;
