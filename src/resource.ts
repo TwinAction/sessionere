@@ -7,6 +7,8 @@ export type RefLike<T> = {
   subscribe: (fn: Subscriber<T>) => () => boolean;
 };
 
+type GlobalSubscriber<T> = (value: T, prev: T | undefined, key: string) => void;
+
 type ContextArgs<C> = keyof C extends never ? void : C;
 
 type Subscriber<T> = (value: T, prev?: T) => void;
@@ -43,6 +45,7 @@ const emptyInstance: Instance<any> = {
 };
 
 export class Resource<T, C = {}> {
+  private globalSubs = new Set<GlobalSubscriber<T>>();
   private instances = new Map<string, Instance<T>>();
 
   constructor(
@@ -68,6 +71,14 @@ export class Resource<T, C = {}> {
 
   empty() {
     return this.createRef({ instance: emptyInstance });
+  }
+
+  subscribeAll(fn: GlobalSubscriber<T>) {
+    this.globalSubs.add(fn);
+
+    return () => {
+      this.globalSubs.delete(fn);
+    };
   }
 
   private prepareInstance(ctx: ContextArgs<C>): Instance<T> {
@@ -103,6 +114,7 @@ export class Resource<T, C = {}> {
       shouldAccept: () => running,
       afterEmit: (next, prev) => {
         refs.forEach((ref) => ref.notify(next, prev));
+        this.globalSubs.forEach((fn) => fn(next, prev, key));
       },
     });
 

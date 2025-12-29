@@ -114,6 +114,7 @@ const emptyInstance = {
 	untilFinish: Promise.resolve()
 };
 var Resource = class {
+	globalSubs = /* @__PURE__ */ new Set();
 	instances = /* @__PURE__ */ new Map();
 	constructor(init, config) {
 		this.init = init;
@@ -128,6 +129,12 @@ var Resource = class {
 	}
 	empty() {
 		return this.createRef({ instance: emptyInstance });
+	}
+	subscribeAll(fn) {
+		this.globalSubs.add(fn);
+		return () => {
+			this.globalSubs.delete(fn);
+		};
 	}
 	prepareInstance(ctx) {
 		const key = `${this.config?.name ?? "unknown"}:${stableHash(ctx)}`;
@@ -155,6 +162,7 @@ var Resource = class {
 			shouldAccept: () => running,
 			afterEmit: (next, prev) => {
 				refs.forEach((ref) => ref.notify(next, prev));
+				this.globalSubs.forEach((fn) => fn(next, prev, key));
 			}
 		});
 		Promise.resolve(this.init({
