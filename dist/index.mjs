@@ -162,7 +162,7 @@ var Resource = class {
 			shouldAccept: () => running,
 			afterEmit: (next, prev) => {
 				refs.forEach((ref) => ref.notify(next, prev));
-				this.globalSubs.forEach((fn) => fn(next, prev, key));
+				this.globalSubs.forEach((fn) => fn(next, prev, ctx, key));
 			}
 		});
 		Promise.resolve(this.init({

@@ -10,7 +10,7 @@ type RefLike<T> = {
   readonly value: Promise<T>;
   subscribe: (fn: Subscriber$1<T>) => () => boolean;
 };
-type GlobalSubscriber<T> = (value: T, prev: T | undefined, key: string) => void;
+type GlobalSubscriber<T, C> = (value: T, prev: T | undefined, ctx: ContextArgs<C>, key: string) => void;
 type ContextArgs<C> = keyof C extends never ? void : C;
 type Subscriber$1<T> = (value: T, prev?: T) => void;
 type ResourceConfig<T> = {
@@ -57,7 +57,7 @@ declare class Resource<T, C = {}> {
     [Symbol.dispose](): void;
     [Symbol.asyncDispose](): Promise<void>;
   };
-  subscribeAll(fn: GlobalSubscriber<T>): () => void;
+  subscribeAll(fn: GlobalSubscriber<T, C>): () => void;
   private prepareInstance;
   private createRef;
 }
