@@ -1,6 +1,7 @@
 //#region src/lib/waitable.d.ts
 type Waitable<T> = {
   emit: (value: T | Promise<T> | ((prev?: T) => T | Promise<T>)) => void;
+  throw: (error: unknown) => void;
   get: () => Promise<T>;
 };
 //#endregion
@@ -8,11 +9,14 @@ type Waitable<T> = {
 type RefLike<T> = {
   readonly key: string;
   readonly value: Promise<T>;
-  subscribe: (fn: Subscriber$1<T>) => () => boolean;
+  onEmit: (fn: ValueSubscriber<T>) => () => boolean;
+  onError: (fn: ErrorSubscriber) => () => boolean;
 };
-type GlobalSubscriber<T, C> = (value: T, prev: T | undefined, ctx: ContextArgs<C>, key: string) => void;
+type GlobalValueSubscriber<T, C> = (value: T, prev: T | undefined, ctx: ContextArgs<C>, key: string) => void;
+type GlobalErrorSubscriber<C> = (error: unknown, ctx: ContextArgs<C>, key: string) => void;
 type ContextArgs<C> = keyof C extends never ? void : C;
-type Subscriber$1<T> = (value: T, prev?: T) => void;
+type ValueSubscriber<T> = (value: T, prev?: T) => void;
+type ErrorSubscriber = (error: unknown) => void;
 type ResourceConfig<T> = {
   name?: string;
   equality?: (a: T, b: T) => boolean;
@@ -20,7 +24,8 @@ type ResourceConfig<T> = {
 type Instance<T> = {
   key: string;
   refs: Map<symbol, {
-    notify: Subscriber$1<T>;
+    notifyEmit: ValueSubscriber<T>;
+    notifyError: ErrorSubscriber;
   }>;
   running: boolean;
   get: () => Promise<T>;
@@ -33,7 +38,8 @@ type Instance<T> = {
 declare class Resource<T, C = {}> {
   private init;
   private config?;
-  private globalSubs;
+  private globalEmitSubs;
+  private globalErrorSubs;
   private instances;
   constructor(init: (arg: {
     emit: Waitable<T>["emit"];
@@ -44,20 +50,21 @@ declare class Resource<T, C = {}> {
   use(ctx: ContextArgs<C>): {
     readonly key: string;
     readonly value: Promise<T>;
-    subscribe(fn: Subscriber$1<T>): () => boolean;
+    onEmit(fn: ValueSubscriber<T>): () => boolean;
+    onError(fn: ErrorSubscriber): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
-    [Symbol.asyncDispose](): Promise<void>;
   };
   empty(): {
     readonly key: string;
     readonly value: Promise<T>;
-    subscribe(fn: Subscriber$1<T>): () => boolean;
+    onEmit(fn: ValueSubscriber<T>): () => boolean;
+    onError(fn: ErrorSubscriber): () => boolean;
     reuse(ctx: ContextArgs<C>): void;
     [Symbol.dispose](): void;
-    [Symbol.asyncDispose](): Promise<void>;
   };
-  subscribeAll(fn: GlobalSubscriber<T, C>): () => void;
+  onEveryEmit(fn: GlobalValueSubscriber<T, C>): () => void;
+  onEveryError(fn: GlobalErrorSubscriber<C>): () => void;
   private prepareInstance;
   private createRef;
 }

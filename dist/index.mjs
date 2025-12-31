@@ -64,36 +64,55 @@ function stableHash(data) {
 //#endregion
 //#region src/lib/waitable.ts
 function createWaitable(options = {}) {
-	let latest;
-	let initialized = false;
+	let state = { status: "pending" };
 	let waiting = [];
+	function flush() {
+		const queued = waiting;
+		waiting = [];
+		if (state.status === "resolved") for (const { resolve } of queued) resolve(state.value);
+		else if (state.status === "rejected") for (const { reject } of queued) reject(state.error);
+	}
 	async function emit(input) {
-		const prev = latest;
+		const prev = state.status === "resolved" ? state.value : void 0;
 		let next;
 		try {
 			if (typeof input === "function") next = await input(prev);
 			else next = await input;
-		} catch {
+		} catch (err) {
+			_throw(err);
 			return;
 		}
 		const equals = options.equality ?? (() => false);
-		if (initialized && equals(next, prev)) return;
+		if (state.status === "resolved" && equals(next, state.value)) return;
 		if (options.shouldAccept && !options.shouldAccept(next, prev)) return;
-		latest = next;
-		initialized = true;
-		const queued = waiting;
-		waiting = [];
-		for (const resolve of queued) resolve(next);
+		state = {
+			status: "resolved",
+			value: next
+		};
+		flush();
 		if (options.afterEmit) queueMicrotask(() => options.afterEmit(next, prev));
 	}
+	function _throw(error) {
+		state = {
+			status: "rejected",
+			error
+		};
+		flush();
+		if (options.afterThrow) queueMicrotask(() => options.afterThrow(error));
+	}
 	function get() {
-		if (initialized) return Promise.resolve(latest);
-		return new Promise((resolve) => {
-			waiting.push(resolve);
+		if (state.status === "resolved") return Promise.resolve(state.value);
+		if (state.status === "rejected") return Promise.reject(state.error);
+		return new Promise((resolve, reject) => {
+			waiting.push({
+				resolve,
+				reject
+			});
 		});
 	}
 	return {
 		emit,
+		throw: _throw,
 		get
 	};
 }
@@ -114,7 +133,8 @@ const emptyInstance = {
 	untilFinish: Promise.resolve()
 };
 var Resource = class {
-	globalSubs = /* @__PURE__ */ new Set();
+	globalEmitSubs = /* @__PURE__ */ new Set();
+	globalErrorSubs = /* @__PURE__ */ new Set();
 	instances = /* @__PURE__ */ new Map();
 	constructor(init, config) {
 		this.init = init;
@@ -130,10 +150,16 @@ var Resource = class {
 	empty() {
 		return this.createRef({ instance: emptyInstance });
 	}
-	subscribeAll(fn) {
-		this.globalSubs.add(fn);
+	onEveryEmit(fn) {
+		this.globalEmitSubs.add(fn);
 		return () => {
-			this.globalSubs.delete(fn);
+			this.globalEmitSubs.delete(fn);
+		};
+	}
+	onEveryError(fn) {
+		this.globalErrorSubs.add(fn);
+		return () => {
+			this.globalErrorSubs.delete(fn);
 		};
 	}
 	prepareInstance(ctx) {
@@ -157,19 +183,26 @@ var Resource = class {
 		let resolveFinish;
 		const untilFinish = new Promise((r) => resolveFinish = r);
 		const refs = /* @__PURE__ */ new Map();
-		const { emit, get } = createWaitable({
+		const waitable = createWaitable({
 			equality: this.config?.equality,
 			shouldAccept: () => running,
 			afterEmit: (next, prev) => {
-				refs.forEach((ref) => ref.notify(next, prev));
-				this.globalSubs.forEach((fn) => fn(next, prev, ctx, key));
+				refs.forEach((ref) => ref.notifyEmit(next, prev));
+				this.globalEmitSubs.forEach((fn) => fn(next, prev, ctx, key));
+			},
+			afterThrow: (err) => {
+				refs.forEach((ref) => ref.notifyError(err));
+				this.globalErrorSubs.forEach((fn) => fn(err, ctx, key));
 			}
 		});
-		Promise.resolve(this.init({
+		const { emit, get } = waitable;
+		Promise.resolve().then(() => this.init({
 			emit,
 			retain,
 			key
-		}, ctx)).then(() => {
+		}, ctx)).catch((err) => {
+			waitable.throw(err);
+		}).then(() => {
 			resolveRetain();
 			resolveFinish();
 		});
@@ -190,10 +223,16 @@ var Resource = class {
 	createRef(args) {
 		let instance = args.instance;
 		const ref = Symbol();
-		const subs = /* @__PURE__ */ new Set();
-		const refEntry = { notify: (v) => {
-			subs.forEach((fn) => fn(v));
-		} };
+		const emitSubs = /* @__PURE__ */ new Set();
+		const errorSubs = /* @__PURE__ */ new Set();
+		const refEntry = {
+			notifyEmit: (v, prev) => {
+				emitSubs.forEach((fn) => fn(v, prev));
+			},
+			notifyError: (err) => {
+				errorSubs.forEach((fn) => fn(err));
+			}
+		};
 		instance.refs.set(ref, refEntry);
 		const changeInstance = async (ctx) => {
 			const newInstance = this.prepareInstance(ctx);
@@ -211,9 +250,13 @@ var Resource = class {
 			get value() {
 				return instance.get();
 			},
-			subscribe(fn) {
-				subs.add(fn);
-				return () => subs.delete(fn);
+			onEmit(fn) {
+				emitSubs.add(fn);
+				return () => emitSubs.delete(fn);
+			},
+			onError(fn) {
+				errorSubs.add(fn);
+				return () => errorSubs.delete(fn);
 			},
 			reuse(ctx) {
 				changeInstance(ctx);
@@ -221,13 +264,6 @@ var Resource = class {
 			[Symbol.dispose]() {
 				instance.refs.delete(ref);
 				if (instance.refs.size === 0) instance.close();
-			},
-			async [Symbol.asyncDispose]() {
-				instance.refs.delete(ref);
-				if (instance.refs.size === 0) {
-					instance.close();
-					await instance.untilFinish;
-				}
 			}
 		};
 	}
