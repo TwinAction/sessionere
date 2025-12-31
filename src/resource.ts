@@ -4,19 +4,27 @@ import { createWaitable, Waitable } from "./lib/waitable";
 export type RefLike<T> = {
   readonly key: string;
   readonly value: Promise<T>;
-  subscribe: (fn: Subscriber<T>) => () => boolean;
+  onEmit: (fn: ValueSubscriber<T>) => () => boolean;
+  onError: (fn: ErrorSubscriber) => () => boolean;
 };
 
-type GlobalSubscriber<T, C> = (
+type GlobalValueSubscriber<T, C> = (
   value: T,
   prev: T | undefined,
   ctx: ContextArgs<C>,
   key: string
 ) => void;
 
+type GlobalErrorSubscriber<C> = (
+  error: unknown,
+  ctx: ContextArgs<C>,
+  key: string
+) => void;
+
 type ContextArgs<C> = keyof C extends never ? void : C;
 
-type Subscriber<T> = (value: T, prev?: T) => void;
+type ValueSubscriber<T> = (value: T, prev?: T) => void;
+type ErrorSubscriber = (error: unknown) => void;
 
 type ResourceConfig<T> = {
   name?: string;
@@ -25,7 +33,10 @@ type ResourceConfig<T> = {
 
 type Instance<T> = {
   key: string;
-  refs: Map<symbol, { notify: Subscriber<T> }>;
+  refs: Map<
+    symbol,
+    { notifyEmit: ValueSubscriber<T>; notifyError: ErrorSubscriber }
+  >;
   running: boolean;
   get: () => Promise<T>;
   close: () => void;
@@ -50,7 +61,8 @@ const emptyInstance: Instance<any> = {
 };
 
 export class Resource<T, C = {}> {
-  private globalSubs = new Set<GlobalSubscriber<T, C>>();
+  private globalEmitSubs = new Set<GlobalValueSubscriber<T, C>>();
+  private globalErrorSubs = new Set<GlobalErrorSubscriber<C>>();
   private instances = new Map<string, Instance<T>>();
 
   constructor(
@@ -78,11 +90,17 @@ export class Resource<T, C = {}> {
     return this.createRef({ instance: emptyInstance });
   }
 
-  subscribeAll(fn: GlobalSubscriber<T, C>) {
-    this.globalSubs.add(fn);
-
+  onEveryEmit(fn: GlobalValueSubscriber<T, C>) {
+    this.globalEmitSubs.add(fn);
     return () => {
-      this.globalSubs.delete(fn);
+      this.globalEmitSubs.delete(fn);
+    };
+  }
+
+  onEveryError(fn: GlobalErrorSubscriber<C>) {
+    this.globalErrorSubs.add(fn);
+    return () => {
+      this.globalErrorSubs.delete(fn);
     };
   }
 
@@ -112,21 +130,35 @@ export class Resource<T, C = {}> {
     let resolveFinish!: () => void;
     const untilFinish = new Promise<void>((r) => (resolveFinish = r));
 
-    const refs = new Map<symbol, { notify: Subscriber<T> }>();
+    const refs = new Map<
+      symbol,
+      { notifyEmit: ValueSubscriber<T>; notifyError: ErrorSubscriber }
+    >();
 
-    const { emit, get } = createWaitable<T>({
+    const waitable = createWaitable<T>({
       equality: this.config?.equality,
       shouldAccept: () => running,
       afterEmit: (next, prev) => {
-        refs.forEach((ref) => ref.notify(next, prev));
-        this.globalSubs.forEach((fn) => fn(next, prev, ctx, key));
+        refs.forEach((ref) => ref.notifyEmit(next, prev));
+        this.globalEmitSubs.forEach((fn) => fn(next, prev, ctx, key));
+      },
+      afterThrow: (err) => {
+        refs.forEach((ref) => ref.notifyError(err));
+        this.globalErrorSubs.forEach((fn) => fn(err, ctx, key));
       },
     });
 
-    Promise.resolve(this.init({ emit, retain, key }, ctx)).then(() => {
-      resolveRetain();
-      resolveFinish();
-    });
+    const { emit, get } = waitable;
+
+    Promise.resolve()
+      .then(() => this.init({ emit, retain, key }, ctx))
+      .catch((err) => {
+        waitable.throw(err);
+      })
+      .then(() => {
+        resolveRetain();
+        resolveFinish();
+      });
 
     const instance: Instance<T> = {
       key,
@@ -148,11 +180,15 @@ export class Resource<T, C = {}> {
     let instance = args.instance;
     const ref = Symbol();
 
-    const subs = new Set<Subscriber<T>>();
+    const emitSubs = new Set<ValueSubscriber<T>>();
+    const errorSubs = new Set<ErrorSubscriber>();
 
     const refEntry = {
-      notify: (v: T) => {
-        subs.forEach((fn) => fn(v));
+      notifyEmit: (v: T, prev?: T) => {
+        emitSubs.forEach((fn) => fn(v, prev));
+      },
+      notifyError: (err: unknown) => {
+        errorSubs.forEach((fn) => fn(err));
       },
     };
 
@@ -177,9 +213,14 @@ export class Resource<T, C = {}> {
         return instance.get();
       },
 
-      subscribe(fn: Subscriber<T>) {
-        subs.add(fn);
-        return () => subs.delete(fn);
+      onEmit(fn: ValueSubscriber<T>) {
+        emitSubs.add(fn);
+        return () => emitSubs.delete(fn);
+      },
+
+      onError(fn: ErrorSubscriber) {
+        errorSubs.add(fn);
+        return () => errorSubs.delete(fn);
       },
 
       reuse(ctx: ContextArgs<C>) {
@@ -190,15 +231,6 @@ export class Resource<T, C = {}> {
         instance.refs.delete(ref);
         if (instance.refs.size === 0) {
           instance.close();
-        }
-      },
-
-      async [Symbol.asyncDispose]() {
-        instance.refs.delete(ref);
-
-        if (instance.refs.size === 0) {
-          instance.close();
-          await instance.untilFinish;
         }
       },
     };

@@ -1,23 +1,44 @@
 export type Waitable<T> = {
   emit: (value: T | Promise<T> | ((prev?: T) => T | Promise<T>)) => void;
+  throw: (error: unknown) => void;
   get: () => Promise<T>;
 };
 
 type WaitableOptions<T> = {
   shouldAccept?: (next: T, prev?: T) => boolean;
   afterEmit?: (next: T, prev?: T) => void;
+  afterThrow?: (error: unknown) => void;
   equality?: (a: T, b: T) => boolean;
 };
+
+type State<T> =
+  | { status: "pending" }
+  | { status: "resolved"; value: T }
+  | { status: "rejected"; error: unknown };
 
 export function createWaitable<T>(
   options: WaitableOptions<T> = {}
 ): Waitable<T> {
-  let latest: T | undefined;
-  let initialized = false;
-  let waiting: Array<(value: T) => void> = [];
+  let state: State<T> = { status: "pending" };
+
+  let waiting: Array<{
+    resolve: (value: T) => void;
+    reject: (err: unknown) => void;
+  }> = [];
+
+  function flush() {
+    const queued = waiting;
+    waiting = [];
+
+    if (state.status === "resolved") {
+      for (const { resolve } of queued) resolve(state.value);
+    } else if (state.status === "rejected") {
+      for (const { reject } of queued) reject(state.error);
+    }
+  }
 
   async function emit(input: T | Promise<T> | ((prev?: T) => T | Promise<T>)) {
-    const prev = latest;
+    const prev = state.status === "resolved" ? state.value : undefined;
 
     let next: T;
     try {
@@ -27,38 +48,49 @@ export function createWaitable<T>(
       } else {
         next = await input;
       }
-    } catch {
+    } catch (err) {
+      _throw(err);
       return;
     }
 
     const equals = options.equality ?? (() => false);
 
-    if (initialized && equals(next, prev!)) return;
+    if (state.status === "resolved" && equals(next, state.value)) return;
 
     if (options.shouldAccept && !options.shouldAccept(next, prev)) {
       return;
     }
 
-    latest = next;
-    initialized = true;
+    state = { status: "resolved", value: next };
 
-    const queued = waiting;
-    waiting = [];
-    for (const resolve of queued) resolve(next);
+    flush();
 
     if (options.afterEmit) {
       queueMicrotask(() => options.afterEmit!(next, prev));
     }
   }
 
-  function get(): Promise<T> {
-    if (initialized) {
-      return Promise.resolve(latest as T);
+  function _throw(error: unknown) {
+    state = { status: "rejected", error };
+
+    flush();
+
+    if (options.afterThrow) {
+      queueMicrotask(() => options.afterThrow!(error));
     }
-    return new Promise<T>((resolve) => {
-      waiting.push(resolve);
+  }
+
+  function get(): Promise<T> {
+    if (state.status === "resolved") {
+      return Promise.resolve(state.value);
+    }
+    if (state.status === "rejected") {
+      return Promise.reject(state.error);
+    }
+    return new Promise<T>((resolve, reject) => {
+      waiting.push({ resolve, reject });
     });
   }
 
-  return { emit, get };
+  return { emit, throw: _throw, get };
 }
